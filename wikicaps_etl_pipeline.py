@@ -1,9 +1,11 @@
+import hashlib
+import re
 import time
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
 from pathlib import Path
-from typing import Union
+from typing import Union, Tuple
 from urllib.error import HTTPError
 
 import numpy as np
@@ -22,42 +24,55 @@ class ImageOutputFormat(str, Enum):
     JPG = "jpg"
 
 
-def build_wikimedia_url(wikimedia_file_id: str, width: int) -> str:
+def build_wikimedia_url(wikimedia_file_id: str, width: int, direct: bool = True) -> str:
+    if direct:
+        # see wikigrab.pl
+        image = wikimedia_file_id.replace(" ", "_")
+        image = re.sub(r'^(File|Image):', '', image)
+        image = image[0].upper() + image[1:]
+        digest = str(hashlib.md5(image.encode('utf-8')).hexdigest()).lower()
+        a = digest[0]
+        b = digest[0:2]
+
+        image = urllib.parse.quote(image)  # encode special chars
+
+        return f"https://upload.wikimedia.org/wikipedia/commons/thumb/{a}/{b}/{image}/{width}px-{image}"
+
     quoted = urllib.parse.quote(wikimedia_file_id)
-    return f"http://commons.wikimedia.org/w/index.php?title=Special:FilePath&file={quoted}&width={width}"
+    return f"https://commons.wikimedia.org/w/index.php?title=Special:FilePath&file={quoted}&width={width}"
 
 
 def download_wikimedia_img(wikimedia_file_id: str,
                            wikicaps_id: int,
                            dst_path: Path,
                            img_out_format: ImageOutputFormat,
-                           width: int = 500) -> Union[str, None]:
+                           width: int = 500) -> Tuple[int, Union[str, None]]:
     assert dst_path.is_dir(), "Destination path is not a directory!"
     dst = dst_path.joinpath(f"wikicaps_{wikicaps_id}.{img_out_format}")
     assert not dst.exists(), f"File {str(dst)} already exists!"
 
     try:
         url = build_wikimedia_url(wikimedia_file_id, width)
-        # download
+        # download # TODO use indirect URL as fallback
         logger.info(f"Downloading image with WikiCaps ID {wikicaps_id} from {url}...")
         img = io.imread(url)
     except (HTTPError, TimeoutError):
         logger.error(f"Error while trying to download from WikiMedia '{wikimedia_file_id}'!")
-        return None
+        return wikicaps_id, None
     except Exception:
         logger.exception(f"Error while trying to download from WikiMedia '{wikimedia_file_id}'!")
-        return None
+        return wikicaps_id, None
+    else:
+        # persist
+        logger.info(f"Persisting image with WikiCaps ID {wikicaps_id} at {str(dst)}...")
+        if img_out_format == ImageOutputFormat.NPY:
+            np.save(str(dst), img)
+        elif img_out_format == ImageOutputFormat.NPZ:
+            np.savez_compressed(str(dst), 'img', img)
+        elif img_out_format == ImageOutputFormat.PNG or img_out_format == ImageOutputFormat.JPG:
+            io.imsave(str(dst), img)
 
-    # persist
-    logger.info(f"Persisting image with WikiCaps ID {wikicaps_id} at {str(dst)}...")
-    if img_out_format == ImageOutputFormat.NPY:
-        np.save(str(dst), img)
-    elif img_out_format == ImageOutputFormat.NPZ:
-        np.savez_compressed(str(dst), 'img', img)
-    elif img_out_format == ImageOutputFormat.PNG or img_out_format == ImageOutputFormat.JPG:
-        io.imsave(str(dst), img)
-
-    return str(dst)
+        return wikicaps_id, str(dst)
 
 
 class WikiCapsETLPipeline(object):
@@ -78,7 +93,6 @@ class WikiCapsETLPipeline(object):
         self.max_samples = max_samples
         self.max_img_width = max_img_width
         self.raw_df: Union[pd.DataFrame, None] = None
-        self.len_raw_df = 0
         self.caption_filters = []
         self.filtered_df: Union[pd.DataFrame, None] = None
         self.n_workers = n_workers
@@ -176,14 +190,6 @@ class WikiCapsETLPipeline(object):
         start = time.time()
 
         with ThreadPoolExecutor(max_workers=self.n_workers) as executor:
-            # TODO what has best performance?
-            # download = lambda row: download_wikimedia_img(row['wikimedia_file'],
-            #                                               row['wikicaps_id'],
-            #                                               self.dst_dir_path,
-            #                                               self.img_output_format,
-            #                                               self.max_img_width)
-            # self.filtered_df.apply(download, axis=1)
-
             # submit a download task for every row in the filtered dataframe
             futures = [executor.submit(download_wikimedia_img,
                                        row['wikimedia_file'],
@@ -195,9 +201,16 @@ class WikiCapsETLPipeline(object):
             # wait for the downloads and store the paths when done
             # TODO set timeout.. Is timeout per future or for all futures?!
             dst_paths = [future.result() for future in as_completed(futures, timeout=None)]
+            dst_paths = [dp[1] for dp in sorted(dst_paths)]
 
         # set path in path column
         self.filtered_df['image_path'] = dst_paths
+
+        # remove row with None in Path
+        num_na = self.filtered_df['image_path'].isnull().sum()
+        if num_na > 0:
+            logger.warning(f"Removing {num_na} rows due to errors during the respective image downloads!")
+            self.filtered_df = self.filtered_df[self.filtered_df['image_path'].notnull()]
 
         logger.info(f"Finished downloading images from WikiMedia in {time.time() - start} seconds!")
 
@@ -212,7 +225,6 @@ class WikiCapsETLPipeline(object):
         df.set_index(0)
         df = df.rename(columns={0: 'wikicaps_id', 1: 'wikimedia_file', 2: 'caption'})
         self.raw_df = df
-        self.len_raw_df = len(self.raw_df)
 
         if self.shuffle_data:
             logger.info(f"Shuffling raw data with seed={self.random_seed}... ")
@@ -230,13 +242,14 @@ class WikiCapsETLPipeline(object):
             self.filtered_df = self.filtered_df.head(n=self.max_samples)
 
         self._download_images()
-        logger.info(f"Finished raw data extraction of {self.len_raw_df} rows in {time.time() - start} seconds!")
+
+        logger.info(f"Finished raw data extraction of {len(self.filtered_df)} rows in {time.time() - start} seconds!")
 
     def get_column_names(self):
         return list(self.raw_df.columns)
 
     def _filter_by_caption(self):
-        logger.info(f"Filtering data of {self.len_raw_df} rows by {len(self.caption_filters)} caption filters!")
+        logger.info(f"Filtering data of {len(self.raw_df)} rows by {len(self.caption_filters)} caption filters!")
         start = time.time()
         self.filtered_df = self.raw_df.copy()
         for f in self.caption_filters:
@@ -246,7 +259,7 @@ class WikiCapsETLPipeline(object):
         # cast unnecessary floats back to ints (they're converted to floats after filtering for what ever reason)
         self.filtered_df = self.filtered_df.convert_dtypes()
         logger.info(
-            f"Removed {self.len_raw_df - len_filtered_df} rows. Filtered data contains {len_filtered_df} rows.")
+            f"Removed {len(self.raw_df) - len_filtered_df} rows. Filtered data contains {len_filtered_df} rows.")
         logger.info(f"Finished filtering data based on captions in {time.time() - start} seconds!")
 
     def transform(self):

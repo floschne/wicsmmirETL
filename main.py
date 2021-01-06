@@ -1,3 +1,5 @@
+import pandas as pd
+
 from pandas_filter_base import FilterBase
 from wikicaps_etl_pipeline import WikiCapsETLPipeline
 
@@ -29,8 +31,11 @@ def create_dataset(version):
 
 
 if __name__ == '__main__':
-    pipeline = WikiCapsETLPipeline(source_csv_file='data/wikicaps_data_list_unfiltered_100', dst_dir_path='/tmp/etl_out/')
+    pipeline = WikiCapsETLPipeline(source_csv_file='data/wikicaps_data_list_unfiltered_100',
+                                   dst_dir_path='/tmp/etl_out/')
 
     pipeline.add_caption_filter(TokenLenFilter(min_num=10, max_num=100))
     pipeline.add_caption_filter(MinSentenceLenFilter(min_len=5))
     pipeline.run()
+
+    print(pd.read_feather("/tmp/etl_out/filtered_data.feather").head())
