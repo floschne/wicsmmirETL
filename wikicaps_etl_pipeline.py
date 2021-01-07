@@ -88,7 +88,8 @@ class WikiCapsETLPipeline(object):
                  random_seed: int = 1312,
                  spacy_model: str = 'en_core_web_lg',
                  n_spacy_cuda_workers: int = 6,
-                 n_download_workers: int = 8):
+                 n_download_workers: int = 8,
+                 add_pos_tag_stats=False):
         self.source_csv_file = source_csv_file
         self.shuffle_data = shuffle_data
         self.random_seed = random_seed
@@ -100,7 +101,7 @@ class WikiCapsETLPipeline(object):
         self.n_download_workers = n_download_workers
         self.n_spacy_cuda_workers = n_spacy_cuda_workers
         self.spacy_nlp = spacy.load(spacy_model)
-
+        self.add_pos_tag_stats = add_pos_tag_stats
         self.img_output_format = img_output_format
         self.dst_dir_path = Path(dst_dir_path)
         if not self.dst_dir_path.exists():
@@ -148,33 +149,34 @@ class WikiCapsETLPipeline(object):
                 # num named entities
                 num_ne.append(len(doc.ents))
 
-                # POS Tags
-                noun, propn, conj, verb, sym, num, adp, adj = 0, 0, 0, 0, 0, 0, 0, 0
-                for t in doc:
-                    if t.pos_ == 'CONJ':
-                        conj += 1
-                    elif t.pos_ == 'ADJ':
-                        adj += 1
-                    elif t.pos_ == 'NOUN':
-                        noun += 1
-                    elif t.pos_ == 'NUM':
-                        num += 1
-                    elif t.pos_ == 'PROPN':
-                        propn += 1
-                    elif t.pos_ == 'SYM':
-                        sym += 1
-                    elif t.pos_ == 'VERB':
-                        verb += 1
-                    elif t.pos_ == 'ADP':
-                        adp += 1
-                num_noun.append(noun)
-                num_propn.append(propn)
-                num_conj.append(conj)
-                num_verb.append(verb)
-                num_sym.append(sym)
-                num_num.append(num)
-                num_adp.append(adp)
-                num_adj.append(adj)
+                if self.add_pos_tag_stats:
+                    # POS Tags
+                    noun, propn, conj, verb, sym, num, adp, adj = 0, 0, 0, 0, 0, 0, 0, 0
+                    for t in doc:
+                        if t.pos_ == 'CONJ':
+                            conj += 1
+                        elif t.pos_ == 'ADJ':
+                            adj += 1
+                        elif t.pos_ == 'NOUN':
+                            noun += 1
+                        elif t.pos_ == 'NUM':
+                            num += 1
+                        elif t.pos_ == 'PROPN':
+                            propn += 1
+                        elif t.pos_ == 'SYM':
+                            sym += 1
+                        elif t.pos_ == 'VERB':
+                            verb += 1
+                        elif t.pos_ == 'ADP':
+                            adp += 1
+                    num_noun.append(noun)
+                    num_propn.append(propn)
+                    num_conj.append(conj)
+                    num_verb.append(verb)
+                    num_sym.append(sym)
+                    num_num.append(num)
+                    num_adp.append(adp)
+                    num_adj.append(adj)
 
                 pbar.update(1)
 
@@ -183,14 +185,16 @@ class WikiCapsETLPipeline(object):
         self.raw_df['num_sent'] = num_sent
         self.raw_df['min_sent_len'] = min_sent_len
         self.raw_df['num_ne'] = num_ne
-        self.raw_df['num_nouns'] = num_noun
-        self.raw_df['num_propn'] = num_propn
-        self.raw_df['num_conj'] = num_conj
-        self.raw_df['num_verb'] = num_verb
-        self.raw_df['num_sym'] = num_sym
-        self.raw_df['num_num'] = num_num
-        self.raw_df['num_adp'] = num_adp
-        self.raw_df['num_adj'] = num_adj
+
+        if self.add_pos_tag_stats:
+            self.raw_df['num_nouns'] = num_noun
+            self.raw_df['num_propn'] = num_propn
+            self.raw_df['num_conj'] = num_conj
+            self.raw_df['num_verb'] = num_verb
+            self.raw_df['num_sym'] = num_sym
+            self.raw_df['num_num'] = num_num
+            self.raw_df['num_adp'] = num_adp
+            self.raw_df['num_adj'] = num_adj
 
         logger.info(f"Finished adding caption statistics in {time.time() - start} seconds!")
 
