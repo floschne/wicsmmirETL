@@ -6,7 +6,6 @@ import spacy
 from loguru import logger
 from omegaconf import OmegaConf
 
-from filters import TokenLenFilter, MinSentenceLenFilter
 from wikicaps_etl_pipeline import WikiCapsETLPipeline
 
 if __name__ == '__main__':
@@ -22,6 +21,8 @@ if __name__ == '__main__':
     logger.add(config.output['log_file'], level='DEBUG')
     logger.add(sys.stdout, level="INFO")
 
+    logger.debug(f"Using config\n{OmegaConf.to_yaml(config)}")
+
     # setup spaCy with GPU and multiprocessing
     if config.spacy.use_gpu:
         # use GPU with spaCy if available (spacy[cudaXXX] has to be installed)
@@ -34,6 +35,4 @@ if __name__ == '__main__':
 
     pipeline = WikiCapsETLPipeline(config)
 
-    pipeline.add_caption_filter(TokenLenFilter(min_num=10, max_num=100))
-    pipeline.add_caption_filter(MinSentenceLenFilter(min_len=5))
     pipeline.run()

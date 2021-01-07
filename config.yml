@@ -4,9 +4,23 @@ input_data:
   metadata_dataframe: /tmp/metadata.df
   shuffle: True
   random_seed: 1312
-  pos_tag_stats: False,
+  pos_tag_stats: False
   max_samples: 10000 # after filtering
-  filters: # TODO
+  filters:
+    - NumTokens:
+        columnId: num_tok
+        max: 150
+        min: 10
+
+    - MinSentenceLength:
+        columnId: min_sent_len
+        min: 5
+
+    - NumSents:
+        columnId: num_sent
+        max: 5
+        min: 1
+
 
 output:
   log_file: /tmp/etl_out/full.log
@@ -15,7 +29,7 @@ output:
   metadata_file: /tmp/metadata.df # file extension doesn't matter
 
 download:
-  with_skimage: False
+  with_skimage: False # otherwise with python requests and pillow
   n_workers: 8
   max_img_width: 500 # in px
 

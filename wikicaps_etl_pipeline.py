@@ -17,6 +17,7 @@ from loguru import logger
 from skimage import io
 from tqdm import tqdm
 
+from filters import create_filters_from_config
 from filters.filter_base import FilterBase
 
 
@@ -75,7 +76,7 @@ def download_wikimedia_img(wikimedia_file_id: str,
         if download_with_skimage:
             img = io.imread(url)
         else:
-            resp = requests.get(url, stream=True)
+            resp = requests.get(url, stream=True, allow_redirects=True, timeout=.5)
             if resp.status_code == 200:
                 img = np.asarray(Image.open(resp.raw))
             else:
@@ -90,7 +91,7 @@ def download_wikimedia_img(wikimedia_file_id: str,
             if download_with_skimage:
                 img = io.imread(url)
             else:
-                resp = requests.get(url, stream=True)
+                resp = requests.get(url, stream=True, allow_redirects=True, timeout=.5)
                 if resp.status_code == 200:
                     img = np.asarray(Image.open(resp.raw))
                 else:
@@ -119,10 +120,10 @@ class WikiCapsETLPipeline(object):
         self.random_seed = config.input_data.random_seed
         self.add_pos_tag_stats = config.input_data.pos_tag_stats
         self.max_samples = config.input_data.max_samples
-        self.caption_filters = []
+        self.caption_filters = create_filters_from_config(config)
 
         # output data setup
-        self.img_output_format = ImageOutputFormat[config.output.img_format]
+        self.img_output_format = ImageOutputFormat[config.output.img_format.upper()]
         self.img_output_directory = Path(config.output.img_directory)
         if not self.img_output_directory.exists():
             self.img_output_directory.mkdir(parents=True, exist_ok=True)
