@@ -147,9 +147,6 @@ class WikiCapsETLPipeline(object):
         self.raw_df: Union[pd.DataFrame, None] = None
         self.filtered_df: Union[pd.DataFrame, None] = None
 
-    def add_caption_filter(self, f: FilterBase):
-        self.caption_filters.append(f)
-
     def _add_caption_stats(self):
         logger.info(f"Adding caption statistics to raw data.")
         start = time.time()
@@ -236,6 +233,7 @@ class WikiCapsETLPipeline(object):
             self.raw_df['num_adp'] = num_adp
             self.raw_df['num_adj'] = num_adj
 
+        self.raw_df.convert_dtypes()  # make sure that ints are not encoded as floats
         logger.info(f"Finished adding caption statistics in {time.time() - start} seconds!")
 
     def _download_images(self):
@@ -275,7 +273,11 @@ class WikiCapsETLPipeline(object):
         logger.info(f"Finished downloading images from WikiMedia in {time.time() - start} seconds!")
 
     def extract(self, separator: str = "\|\|\|", header=None):
+        """
+        Transform function of the ETL Process.
+        """
         logger.info(f"Extracting raw data from {self.wikicaps_datasource}!")
+        logger.info(f"Loading raw data from {self.wikicaps_datasource} into memory...")
         start = time.time()
         df = pd.read_csv(self.wikicaps_datasource,
                          sep=separator,
@@ -285,6 +287,7 @@ class WikiCapsETLPipeline(object):
         df.set_index(0)
         df = df.rename(columns={0: 'wikicaps_id', 1: 'wikimedia_file', 2: 'caption'})
         self.raw_df = df
+        logger.info(f"Finished loading raw data into memory in {time.time() - start} seconds!")
 
         if self.shuffle_data:
             logger.info(f"Shuffling raw data with seed={self.random_seed}... ")
@@ -304,6 +307,7 @@ class WikiCapsETLPipeline(object):
         self._download_images()
 
         logger.info(f"Finished raw data extraction of {len(self.filtered_df)} rows in {time.time() - start} seconds!")
+        self.__persist_dataframe()
 
     def get_column_names(self):
         return list(self.raw_df.columns)
@@ -323,13 +327,16 @@ class WikiCapsETLPipeline(object):
         logger.info(f"Finished filtering data based on captions in {time.time() - start} seconds!")
 
     def transform(self):
+        """
+        Transform function of the ETL Process.
+        """
         pass
 
     def load(self):
-        logger.info(f"Loading filtered data into {str(self.metadata_output_file)}")
-        start = time.time()
-        self.filtered_df.reset_index(drop=True).to_feather(str(self.metadata_output_file))
-        logger.info(f"Finished loading filtered data in {time.time() - start} seconds!")
+        """
+        Load function of the ETL Process.
+        """
+        self.__persist_dataframe()
 
     def run(self):
         logger.info("Starting ETL Process!")
@@ -338,3 +345,9 @@ class WikiCapsETLPipeline(object):
         self.transform()
         self.load()
         logger.info(f"Finished ETL Process in {time.time() - start} seconds!")
+
+    def __persist_dataframe(self):
+        logger.info(f"Persisting data at {str(self.metadata_output_file)}")
+        start = time.time()
+        self.filtered_df.reset_index(drop=True).to_feather(self.metadata_output_file)
+        logger.info(f"Finished persisting data in {time.time() - start} seconds!")
