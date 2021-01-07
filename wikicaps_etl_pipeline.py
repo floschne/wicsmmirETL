@@ -13,6 +13,7 @@ import pandas as pd
 import spacy
 from loguru import logger
 from skimage import io
+from tqdm import tqdm
 
 from pandas_filter_base import FilterBase
 
@@ -86,7 +87,8 @@ class WikiCapsETLPipeline(object):
                  shuffle_data: bool = False,
                  random_seed: int = 1312,
                  spacy_model: str = 'en_core_web_lg',
-                 n_workers: int = 8):
+                 n_spacy_cuda_workers: int = 6,
+                 n_download_workers: int = 8):
         self.source_csv_file = source_csv_file
         self.shuffle_data = shuffle_data
         self.random_seed = random_seed
@@ -95,10 +97,8 @@ class WikiCapsETLPipeline(object):
         self.raw_df: Union[pd.DataFrame, None] = None
         self.caption_filters = []
         self.filtered_df: Union[pd.DataFrame, None] = None
-        self.n_workers = n_workers
-
-        # use GPU with spaCy if available (spacy[cudaXXX] has to be installed)
-        logger.info(f"{'' if spacy.prefer_gpu() else 'Not'} using GPU for spaCy!")
+        self.n_download_workers = n_download_workers
+        self.n_spacy_cuda_workers = n_spacy_cuda_workers
         self.spacy_nlp = spacy.load(spacy_model)
 
         self.img_output_format = img_output_format
@@ -132,46 +132,51 @@ class WikiCapsETLPipeline(object):
         num_adj = []  # adjectives (nice, fast, cool, ...)
 
         # TODO whats a good batch_size?
-        for doc in self.spacy_nlp.pipe(self.raw_df['caption'].astype(str), batch_size=100, n_process=self.n_workers):
-            # num tokens
-            num_tok.append(len(doc))
-            # num sentences
-            num_sent.append(len(list(doc.sents)))
-            # min length of sentences
-            min_len = 10000
-            for s in doc.sents:
-                min_len = min(min_len, len(s))
-            min_sent_len.append(min_len)
-            # num named entities
-            num_ne.append(len(doc.ents))
+        with tqdm(total=len(self.raw_df)) as pbar:
+            for doc in self.spacy_nlp.pipe(self.raw_df['caption'].astype(str),
+                                           batch_size=100,
+                                           n_process=self.n_spacy_cuda_workers):
+                # num tokens
+                num_tok.append(len(doc))
+                # num sentences
+                num_sent.append(len(list(doc.sents)))
+                # min length of sentences
+                min_len = 10000
+                for s in doc.sents:
+                    min_len = min(min_len, len(s))
+                min_sent_len.append(min_len)
+                # num named entities
+                num_ne.append(len(doc.ents))
 
-            # POS Tags
-            noun, propn, conj, verb, sym, num, adp, adj = 0, 0, 0, 0, 0, 0, 0, 0
-            for t in doc:
-                if t.pos_ == 'CONJ':
-                    conj += 1
-                elif t.pos_ == 'ADJ':
-                    adj += 1
-                elif t.pos_ == 'NOUN':
-                    noun += 1
-                elif t.pos_ == 'NUM':
-                    num += 1
-                elif t.pos_ == 'PROPN':
-                    propn += 1
-                elif t.pos_ == 'SYM':
-                    sym += 1
-                elif t.pos_ == 'VERB':
-                    verb += 1
-                elif t.pos_ == 'ADP':
-                    adp += 1
-            num_noun.append(noun)
-            num_propn.append(propn)
-            num_conj.append(conj)
-            num_verb.append(verb)
-            num_sym.append(sym)
-            num_num.append(num)
-            num_adp.append(adp)
-            num_adj.append(adj)
+                # POS Tags
+                noun, propn, conj, verb, sym, num, adp, adj = 0, 0, 0, 0, 0, 0, 0, 0
+                for t in doc:
+                    if t.pos_ == 'CONJ':
+                        conj += 1
+                    elif t.pos_ == 'ADJ':
+                        adj += 1
+                    elif t.pos_ == 'NOUN':
+                        noun += 1
+                    elif t.pos_ == 'NUM':
+                        num += 1
+                    elif t.pos_ == 'PROPN':
+                        propn += 1
+                    elif t.pos_ == 'SYM':
+                        sym += 1
+                    elif t.pos_ == 'VERB':
+                        verb += 1
+                    elif t.pos_ == 'ADP':
+                        adp += 1
+                num_noun.append(noun)
+                num_propn.append(propn)
+                num_conj.append(conj)
+                num_verb.append(verb)
+                num_sym.append(sym)
+                num_num.append(num)
+                num_adp.append(adp)
+                num_adj.append(adj)
+
+                pbar.update(1)
 
         # add stats as columns to df
         self.raw_df['num_tok'] = num_tok
@@ -190,10 +195,10 @@ class WikiCapsETLPipeline(object):
         logger.info(f"Finished adding caption statistics in {time.time() - start} seconds!")
 
     def _download_images(self):
-        logger.info(f"Downloading {len(self.filtered_df)} images from WikiMedia with {self.n_workers} workers!")
+        logger.info(f"Downloading {len(self.filtered_df)} images from WikiMedia with {self.n_download_workers} workers!")
         start = time.time()
 
-        with ThreadPoolExecutor(max_workers=self.n_workers) as executor:
+        with ThreadPoolExecutor(max_workers=self.n_download_workers) as executor:
             # submit a download task for every row in the filtered dataframe
             futures = [executor.submit(download_wikimedia_img,
                                        row['wikimedia_file'],
