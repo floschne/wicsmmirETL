@@ -55,7 +55,7 @@ def download_wikimedia_img(wikimedia_file_id: str,
     try:
         url = build_wikimedia_url(wikimedia_file_id, width)
         # download # TODO use indirect URL as fallback
-        logger.info(f"Downloading image with WikiCaps ID {wikicaps_id} from {url}...")
+        logger.debug(f"Downloading image with WikiCaps ID {wikicaps_id} from {url}...")
         img = io.imread(url)
     except (HTTPError, TimeoutError):
         logger.error(f"Error while trying to download from WikiMedia '{wikimedia_file_id}'!")
@@ -65,7 +65,7 @@ def download_wikimedia_img(wikimedia_file_id: str,
         return wikicaps_id, None
     else:
         # persist
-        logger.info(f"Persisting image with WikiCaps ID {wikicaps_id} at {str(dst)}...")
+        logger.debug(f"Persisting image with WikiCaps ID {wikicaps_id} at {str(dst)}...")
         if img_out_format == ImageOutputFormat.NPY:
             np.save(str(dst), img)
         elif img_out_format == ImageOutputFormat.NPZ:
@@ -199,18 +199,23 @@ class WikiCapsETLPipeline(object):
         start = time.time()
 
         with ThreadPoolExecutor(max_workers=self.n_download_workers) as executor:
-            # submit a download task for every row in the filtered dataframe
-            futures = [executor.submit(download_wikimedia_img,
-                                       row['wikimedia_file'],
-                                       row['wikicaps_id'],
-                                       self.dst_dir_path,
-                                       self.img_output_format,
-                                       self.max_img_width) for _, row in self.filtered_df.iterrows()]
+            with tqdm(total=len(self.filtered_df)) as progress:
+                futures = []
+                for _, row in self.filtered_df.iterrows():
+                    # submit a download task for every row in the filtered dataframe
+                    future = executor.submit(download_wikimedia_img,
+                                             row['wikimedia_file'],
+                                             row['wikicaps_id'],
+                                             self.dst_dir_path,
+                                             self.img_output_format,
+                                             self.max_img_width)
+                    future.add_done_callback(lambda p: progress.update())
+                    futures.append(future)
 
-            # wait for the downloads and store the paths when done
-            # TODO set timeout.. Is timeout per future or for all futures?!
-            dst_paths = [future.result() for future in as_completed(futures, timeout=None)]
-            dst_paths = [dp[1] for dp in sorted(dst_paths)]
+                # wait for the downloads and store the paths when done
+                # TODO set timeout.. Is timeout per future or for all futures?!
+                dst_paths = [future.result() for future in as_completed(futures, timeout=None)]
+                dst_paths = [dp[1] for dp in sorted(dst_paths)]
 
         # set path in path column
         self.filtered_df['image_path'] = dst_paths

@@ -1,4 +1,5 @@
 import multiprocessing
+import sys
 
 import pandas as pd
 import spacy
@@ -36,15 +37,23 @@ def create_dataset(version):
 
 if __name__ == '__main__':
 
+    logger.remove()
+    logger.add("/tmp/etl_out/complete.log", level='DEBUG')
+    logger.add(sys.stdout, level="INFO")
+
     # use GPU with spaCy if available (spacy[cudaXXX] has to be installed)
     spacy_gpu_enabled = spacy.prefer_gpu()
     logger.info(f"{'' if spacy_gpu_enabled else 'Not'} using GPU for spaCy!")
+
     if spacy_gpu_enabled:
         # Try to resolve https://github.com/explosion/spaCy/issues/5507
         multiprocessing.set_start_method('spawn')
 
-    pipeline = WikiCapsETLPipeline(source_csv_file='data/wikicaps_data_list_unfiltered',
-                                   dst_dir_path='/tmp/etl_out/')
+    pipeline = WikiCapsETLPipeline(source_csv_file='data/wikicaps_data_list_unfiltered_100',
+                                   dst_dir_path='/tmp/etl_out/',
+                                   n_spacy_cuda_workers=6,
+                                   n_download_workers=16,
+                                   shuffle_data=True)
 
     pipeline.add_caption_filter(TokenLenFilter(min_num=10, max_num=100))
     pipeline.add_caption_filter(MinSentenceLenFilter(min_len=5))
