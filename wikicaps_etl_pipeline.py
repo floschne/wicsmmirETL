@@ -96,7 +96,11 @@ class WikiCapsETLPipeline(object):
         self.caption_filters = []
         self.filtered_df: Union[pd.DataFrame, None] = None
         self.n_workers = n_workers
+
+        # use GPU with spaCy if available (spacy[cudaXXX] has to be installed)
+        logger.info(f"{'' if spacy.prefer_gpu() else 'Not'} using GPU for spaCy!")
         self.spacy_nlp = spacy.load(spacy_model)
+
         self.img_output_format = img_output_format
         self.dst_dir_path = Path(dst_dir_path)
         if not self.dst_dir_path.exists():
