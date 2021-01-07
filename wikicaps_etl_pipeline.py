@@ -125,9 +125,14 @@ class WikiCapsETLPipeline(object):
         # output data setup
         self.img_output_format = ImageOutputFormat[config.output.img_format.upper()]
         self.img_output_directory = Path(config.output.img_directory)
+
         if not self.img_output_directory.exists():
             self.img_output_directory.mkdir(parents=True, exist_ok=True)
-        self.metadata_output_file = config.output.metadata_file
+        self.metadata_output_file = Path(config.output.metadata_file + '.feather')
+
+        assert not self.metadata_output_file.exists(), f"Output File {str(self.metadata_output_file)} already exists!"
+        if not self.metadata_output_file.parent.exists():
+            self.metadata_output_file.parent.mkdir(parents=True, exist_ok=True)
 
         # download setup
         self.download_with_skimage = config.download.with_skimage
@@ -321,10 +326,9 @@ class WikiCapsETLPipeline(object):
         pass
 
     def load(self):
-        dst_file = self.img_output_directory.joinpath(self.metadata_output_file + '.feather')
-        logger.info(f"Loading filtered data into {str(dst_file)}")
+        logger.info(f"Loading filtered data into {str(self.metadata_output_file)}")
         start = time.time()
-        self.filtered_df.reset_index(drop=True).to_feather(str(dst_file))
+        self.filtered_df.reset_index(drop=True).to_feather(str(self.metadata_output_file))
         logger.info(f"Finished loading filtered data in {time.time() - start} seconds!")
 
     def run(self):

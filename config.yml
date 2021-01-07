@@ -1,11 +1,12 @@
 input_data:
   read_from_wikicaps_datasource: True # if True the data is read from the raw wikicaps file otherwise from metadata_dataframe
-  wikicaps_datasource: data/wikicaps_data_list_unfiltered
-  metadata_dataframe: /tmp/metadata.df
+  wikicaps_datasource: ./data/wikicaps_data_list_unfiltered_100
+  load_from_dataframe: False # TODO
+  metadata_dataframe: ./wikicaps_etl_out/metadata.df.feather # TODO
   shuffle: True
   random_seed: 1312
   pos_tag_stats: False
-  max_samples: 10000 # after filtering
+  max_samples: 1000 # after filtering
   filters:
     - NumTokens:
         columnId: num_tok
@@ -23,10 +24,10 @@ input_data:
 
 
 output:
-  log_file: /tmp/etl_out/full.log
+  log_file: ./wikicaps_etl_out/full.log
   img_format: png # choice of: png, jpg, npy, npz
-  img_directory: /tmp/etl_out/
-  metadata_file: /tmp/metadata.df # file extension doesn't matter
+  img_directory: ./wikicaps_etl_out/images/
+  metadata_file: ./wikicaps_etl_out/metadata.df # file extension doesn't matter
 
 download:
   with_skimage: False # otherwise with python requests and pillow
