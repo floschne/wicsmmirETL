@@ -1,0 +1,27 @@
+input_data:
+  read_from_wikicaps_datasource: True # if True the data is read from the raw wikicaps file otherwise from metadata_dataframe
+  wikicaps_datasource: data/wikicaps_data_list_unfiltered
+  metadata_dataframe: /tmp/metadata.df
+  shuffle: True
+  random_seed: 1312
+  pos_tag_stats: False,
+  max_samples: 10000 # after filtering
+  filters: # TODO
+
+output:
+  log_file: /tmp/etl_out/full.log
+  img_format: png # choice of: png, jpg, npy, npz
+  img_directory: /tmp/etl_out/
+  metadata_file: /tmp/metadata.df # file extension doesn't matter
+
+download:
+  with_skimage: False
+  n_workers: 8
+  max_img_width: 500 # in px
+
+spacy:
+  model: en_core_web_lg
+  use_gpu: True # Maybe it's way faster not using GPU but 50 CPUs
+  n_workers: 6 # when using GPU, all workers allocate memory on a single GPU
+
+

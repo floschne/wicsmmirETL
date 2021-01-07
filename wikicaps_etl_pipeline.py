@@ -3,7 +3,7 @@ import re
 import time
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from enum import Enum
+from enum import Enum, unique
 from pathlib import Path
 from typing import Union, Tuple
 from urllib.error import HTTPError, URLError
@@ -17,9 +17,10 @@ from loguru import logger
 from skimage import io
 from tqdm import tqdm
 
-from pandas_filter_base import FilterBase
+from filters.filter_base import FilterBase
 
 
+@unique
 class ImageOutputFormat(str, Enum):
     NPY = "npy"
     NPZ = "npz"
@@ -108,36 +109,37 @@ def download_wikimedia_img(wikimedia_file_id: str,
 
 class WikiCapsETLPipeline(object):
 
-    def __init__(self,
-                 source_csv_file: str,
-                 dst_dir_path: str,
-                 img_output_format: ImageOutputFormat = ImageOutputFormat.PNG,
-                 max_samples: int = 10000,
-                 max_img_width: int = 500,
-                 shuffle_data: bool = False,
-                 random_seed: int = 1312,
-                 spacy_model: str = 'en_core_web_lg',
-                 n_spacy_cuda_workers: int = 6,
-                 n_download_workers: int = 8,
-                 add_pos_tag_stats=False,
-                 download_with_skimage=False):
-        self.source_csv_file = source_csv_file
-        self.shuffle_data = shuffle_data
-        self.random_seed = random_seed
-        self.max_samples = max_samples
-        self.max_img_width = max_img_width
-        self.raw_df: Union[pd.DataFrame, None] = None
+    def __init__(self, config):
+        self.config = config
+        # input data setup
+        self.read_from_wikicaps_datasource = config.input_data.read_from_wikicaps_datasource
+        self.wikicaps_datasource = config.input_data.wikicaps_datasource
+        self.metadata_dataframe = config.input_data.metadata_dataframe
+        self.shuffle_data = config.input_data.shuffle
+        self.random_seed = config.input_data.random_seed
+        self.add_pos_tag_stats = config.input_data.pos_tag_stats
+        self.max_samples = config.input_data.max_samples
         self.caption_filters = []
+
+        # output data setup
+        self.img_output_format = ImageOutputFormat[config.output.img_format]
+        self.img_output_directory = Path(config.output.img_directory)
+        if not self.img_output_directory.exists():
+            self.img_output_directory.mkdir(parents=True, exist_ok=True)
+        self.metadata_output_file = config.output.metadata_file
+
+        # download setup
+        self.download_with_skimage = config.download.with_skimage
+        self.n_download_workers = config.download.n_workers
+        self.max_img_width = config.download.max_img_width
+
+        # spacy setup
+        self.n_spacy_workers = config.spacy.n_workers
+        self.spacy_nlp = spacy.load(config.spacy.model)
+
+        # members
+        self.raw_df: Union[pd.DataFrame, None] = None
         self.filtered_df: Union[pd.DataFrame, None] = None
-        self.n_download_workers = n_download_workers
-        self.n_spacy_cuda_workers = n_spacy_cuda_workers
-        self.download_with_skimage = download_with_skimage
-        self.spacy_nlp = spacy.load(spacy_model)
-        self.add_pos_tag_stats = add_pos_tag_stats
-        self.img_output_format = img_output_format
-        self.dst_dir_path = Path(dst_dir_path)
-        if not self.dst_dir_path.exists():
-            self.dst_dir_path.mkdir(parents=True, exist_ok=True)
 
     def add_caption_filter(self, f: FilterBase):
         self.caption_filters.append(f)
@@ -168,7 +170,7 @@ class WikiCapsETLPipeline(object):
         with tqdm(total=len(self.raw_df)) as pbar:
             for doc in self.spacy_nlp.pipe(self.raw_df['caption'].astype(str),
                                            batch_size=100,
-                                           n_process=self.n_spacy_cuda_workers):
+                                           n_process=self.n_spacy_workers):
                 # num tokens
                 num_tok.append(len(doc))
                 # num sentences
@@ -243,7 +245,7 @@ class WikiCapsETLPipeline(object):
                     future = executor.submit(download_wikimedia_img,
                                              row['wikimedia_file'],
                                              row['wikicaps_id'],
-                                             self.dst_dir_path,
+                                             self.img_output_directory,
                                              self.img_output_format,
                                              self.max_img_width,
                                              self.download_with_skimage)
@@ -267,9 +269,9 @@ class WikiCapsETLPipeline(object):
         logger.info(f"Finished downloading images from WikiMedia in {time.time() - start} seconds!")
 
     def extract(self, separator: str = "\|\|\|", header=None):
-        logger.info(f"Extracting raw data from {self.source_csv_file}!")
+        logger.info(f"Extracting raw data from {self.wikicaps_datasource}!")
         start = time.time()
-        df = pd.read_csv(self.source_csv_file,
+        df = pd.read_csv(self.wikicaps_datasource,
                          sep=separator,
                          header=header,
                          encoding='utf-8',
@@ -318,7 +320,7 @@ class WikiCapsETLPipeline(object):
         pass
 
     def load(self):
-        dst_file = self.dst_dir_path.joinpath('filtered_data.feather')
+        dst_file = self.img_output_directory.joinpath(self.metadata_output_file + '.feather')
         logger.info(f"Loading filtered data into {str(dst_file)}")
         start = time.time()
         self.filtered_df.reset_index(drop=True).to_feather(str(dst_file))
