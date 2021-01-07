@@ -6,11 +6,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
 from pathlib import Path
 from typing import Union, Tuple
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 
 import numpy as np
 import pandas as pd
+import requests
 import spacy
+from PIL import Image, UnidentifiedImageError
 from loguru import logger
 from skimage import io
 from tqdm import tqdm
@@ -43,37 +45,65 @@ def build_wikimedia_url(wikimedia_file_id: str, width: int, direct: bool = True)
     return f"https://commons.wikimedia.org/w/index.php?title=Special:FilePath&file={quoted}&width={width}"
 
 
+def persist_img(img, dst: Path, wikicaps_id: int, img_out_format: ImageOutputFormat) -> Tuple[int, str]:
+    logger.debug(f"Persisting image with WikiCaps ID {wikicaps_id} at {str(dst)}...")
+    if img_out_format == ImageOutputFormat.NPY:
+        np.save(str(dst), img)
+    elif img_out_format == ImageOutputFormat.NPZ:
+        np.savez_compressed(str(dst), 'img', img)
+    elif img_out_format == ImageOutputFormat.PNG or img_out_format == ImageOutputFormat.JPG:
+        io.imsave(str(dst), img)
+
+    return wikicaps_id, str(dst)
+
+
 def download_wikimedia_img(wikimedia_file_id: str,
                            wikicaps_id: int,
                            dst_path: Path,
                            img_out_format: ImageOutputFormat,
-                           width: int = 500) -> Tuple[int, Union[str, None]]:
+                           width: int = 500,
+                           download_with_skimage=False) -> Tuple[int, Union[str, None]]:
     assert dst_path.is_dir(), "Destination path is not a directory!"
     dst = dst_path.joinpath(f"wikicaps_{wikicaps_id}.{img_out_format}")
     assert not dst.exists(), f"File {str(dst)} already exists!"
 
+    # try to download image from direct URL
+    url = build_wikimedia_url(wikimedia_file_id, width)
     try:
-        url = build_wikimedia_url(wikimedia_file_id, width)
-        # download # TODO use indirect URL as fallback
         logger.debug(f"Downloading image with WikiCaps ID {wikicaps_id} from {url}...")
-        img = io.imread(url)
-    except (HTTPError, TimeoutError):
-        logger.error(f"Error while trying to download from WikiMedia '{wikimedia_file_id}'!")
-        return wikicaps_id, None
-    except Exception:
-        logger.exception(f"Error while trying to download from WikiMedia '{wikimedia_file_id}'!")
+        if download_with_skimage:
+            img = io.imread(url)
+        else:
+            resp = requests.get(url, stream=True)
+            if resp.status_code == 200:
+                img = np.asarray(Image.open(resp.raw))
+            else:
+                raise ConnectionError()
+    except (HTTPError, TimeoutError, URLError, ConnectionError):
+        logger.warning(f"Error while trying to download '{wikimedia_file_id} from direct URL at {url}'!")
+
+        # retry download from indirect URL
+        url = build_wikimedia_url(wikimedia_file_id, width, direct=False)
+        logger.warning(f"Retrying to download '{wikimedia_file_id}' from WikiMedia from indirect URL at {url}'!")
+        try:
+            if download_with_skimage:
+                img = io.imread(url)
+            else:
+                resp = requests.get(url, stream=True)
+                if resp.status_code == 200:
+                    img = np.asarray(Image.open(resp.raw))
+                else:
+                    raise ConnectionError()
+        except (HTTPError, TimeoutError, URLError, UnidentifiedImageError, ConnectionError, Exception):
+            logger.error(f"Error while trying to download '{wikimedia_file_id}' from WikiMedia!")
+            return wikicaps_id, None
+        else:
+            return persist_img(img, dst, wikicaps_id, img_out_format)
+    except (UnidentifiedImageError, Exception):
+        logger.exception(f"Error while trying to download '{wikimedia_file_id}' from WikiMedia!")
         return wikicaps_id, None
     else:
-        # persist
-        logger.debug(f"Persisting image with WikiCaps ID {wikicaps_id} at {str(dst)}...")
-        if img_out_format == ImageOutputFormat.NPY:
-            np.save(str(dst), img)
-        elif img_out_format == ImageOutputFormat.NPZ:
-            np.savez_compressed(str(dst), 'img', img)
-        elif img_out_format == ImageOutputFormat.PNG or img_out_format == ImageOutputFormat.JPG:
-            io.imsave(str(dst), img)
-
-        return wikicaps_id, str(dst)
+        return persist_img(img, dst, wikicaps_id, img_out_format)
 
 
 class WikiCapsETLPipeline(object):
@@ -89,7 +119,8 @@ class WikiCapsETLPipeline(object):
                  spacy_model: str = 'en_core_web_lg',
                  n_spacy_cuda_workers: int = 6,
                  n_download_workers: int = 8,
-                 add_pos_tag_stats=False):
+                 add_pos_tag_stats=False,
+                 download_with_skimage=False):
         self.source_csv_file = source_csv_file
         self.shuffle_data = shuffle_data
         self.random_seed = random_seed
@@ -100,6 +131,7 @@ class WikiCapsETLPipeline(object):
         self.filtered_df: Union[pd.DataFrame, None] = None
         self.n_download_workers = n_download_workers
         self.n_spacy_cuda_workers = n_spacy_cuda_workers
+        self.download_with_skimage = download_with_skimage
         self.spacy_nlp = spacy.load(spacy_model)
         self.add_pos_tag_stats = add_pos_tag_stats
         self.img_output_format = img_output_format
@@ -199,7 +231,8 @@ class WikiCapsETLPipeline(object):
         logger.info(f"Finished adding caption statistics in {time.time() - start} seconds!")
 
     def _download_images(self):
-        logger.info(f"Downloading {len(self.filtered_df)} images from WikiMedia with {self.n_download_workers} workers!")
+        logger.info(
+            f"Downloading {len(self.filtered_df)} images from WikiMedia with {self.n_download_workers} workers!")
         start = time.time()
 
         with ThreadPoolExecutor(max_workers=self.n_download_workers) as executor:
@@ -212,7 +245,8 @@ class WikiCapsETLPipeline(object):
                                              row['wikicaps_id'],
                                              self.dst_dir_path,
                                              self.img_output_format,
-                                             self.max_img_width)
+                                             self.max_img_width,
+                                             self.download_with_skimage)
                     future.add_done_callback(lambda p: progress.update())
                     futures.append(future)
 
