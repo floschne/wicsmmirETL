@@ -128,7 +128,7 @@ class WikiCapsETLPipeline(object):
         num_adj = []  # adjectives (nice, fast, cool, ...)
 
         # TODO whats a good batch_size?
-        for doc in self.spacy_nlp.pipe(self.raw_df['caption'], batch_size=100, n_threads=self.n_workers):
+        for doc in self.spacy_nlp.pipe(self.raw_df['caption'].astype(str), batch_size=100, n_process=self.n_workers):
             # num tokens
             num_tok.append(len(doc))
             # num sentences
