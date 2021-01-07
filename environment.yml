@@ -195,8 +195,6 @@ dependencies:
   - zlib=1.2.11=h7b6447c_3
   - zstd=1.4.5=h6597ccf_2
   - pip:
-    - en-core-web-lg==2.3.1
-    - en-core-web-sm==2.3.1
     - loguru==0.5.3
     - protobuf==3.14.0
     - pyarrow==2.0.0
