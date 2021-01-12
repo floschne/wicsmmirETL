@@ -6,7 +6,7 @@ from filters.filter_base import FilterBase
 def create_filters_from_config(config):
     filters = []
 
-    for f in config.input_data.filters:
+    for f in config.extraction.filters:
         name = list(f.keys())[0]
         minn = -1
         if f[name]['min']:

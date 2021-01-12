@@ -24,7 +24,7 @@ if __name__ == '__main__':
     logger.debug(f"Using config\n{OmegaConf.to_yaml(config)}")
 
     # setup spaCy with GPU and multiprocessing
-    if config.spacy.use_gpu:
+    if config.extraction.spacy.use_gpu:
         # use GPU with spaCy if available (spacy[cudaXXX] has to be installed)
         spacy_gpu_enabled = spacy.prefer_gpu()
         logger.info(f"{'' if spacy_gpu_enabled else 'Not'} using GPU for spaCy!")
