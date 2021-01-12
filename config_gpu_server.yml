@@ -6,7 +6,7 @@ run:
 
 extraction: # Extraction step
   read_from_wikicaps_datasource: True # if True the data is read from the raw wikicaps file otherwise from metadata_dataframe
-  wikicaps_datasource: ./data/wikicaps_data_list_unfiltered_100
+  wikicaps_datasource: ./data/wikicaps_data_list_unfiltered
   shuffle: True
   random_seed: 1312
   pos_tag_stats: True # if True POS Tag statistics of the tokens get computed (takes longer)
@@ -47,9 +47,9 @@ transformation: # Transformation step
         optimize: True
         dpi: 72
 
-
-output: # Loading step
+output: # Loading step and general output stuff
   log_file: ./wikicaps_etl_out/full.log
-  img_format: png # choice of: png, jpg, npy, npz
+  img_format: png # choice of: png, jpg, npy, npz # TODO transformation only supports png and jpg for now
   img_directory: ./wikicaps_etl_out/images/
-  metadata_file: ./wikicaps_etl_out/metadata.df # file extension doesn't matter
+  metadata_file: ./wikicaps_etl_out/metadata.df.feather
+  path_caption_csv_file: ./wikicaps_etl_out/path_caption.csv

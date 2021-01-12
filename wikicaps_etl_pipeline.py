@@ -157,7 +157,7 @@ class WikiCapsETLPipeline(object):
         if not self.img_output_directory.exists():
             self.img_output_directory.mkdir(parents=True, exist_ok=True)
 
-        self.metadata_output_file = Path(config.output.metadata_file + '.feather')
+        self.metadata_output_file = Path(config.output.metadata_file)
         if not self.metadata_output_file.exists():
             self.metadata_output_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -169,8 +169,8 @@ class WikiCapsETLPipeline(object):
         self.wikicaps_data: Union[pd.DataFrame, None] = None
         self.metadata: Union[pd.DataFrame, None] = None
 
-    def _create_caption_stats(self):
-        logger.info(f"Creating caption statistics...")
+    def _generate_caption_stats(self):
+        logger.info(f"Generating caption statistics...")
         start = time.time()
         # Tokens and sentences
         num_tok = []
@@ -318,7 +318,7 @@ class WikiCapsETLPipeline(object):
             self.wikicaps_data = self.wikicaps_data.sample(frac=1, random_state=self.random_seed)
 
         logger.info("Creating Metadata...")
-        self._create_caption_stats()
+        self._generate_caption_stats()
         self._filter_by_caption()
 
         len_f_df = len(self.metadata)
