@@ -10,6 +10,7 @@ extraction: # Extraction step
   shuffle: True
   random_seed: 1312
   pos_tag_stats: True # if True POS Tag statistics of the tokens get computed (takes longer)
+  readability_scores: True # if True Flesch-Kincaid and Dale-Chall readability scores get compute for each caption
   max_samples: 300 # after filtering
   filters:
     - NumTokens:

@@ -10,9 +10,11 @@ from urllib.error import HTTPError, URLError
 import numpy as np
 import pandas as pd
 import requests
+import spacy
 from PIL import Image, UnidentifiedImageError
 from loguru import logger
 from skimage import io
+from spacy_readability import Readability
 from tqdm import tqdm
 
 from transformations.image_transformation_base import ImageTransformationBase
@@ -121,18 +123,29 @@ def apply_img_transformations(wikicaps_id: int,
         return wikicaps_id, False
 
 
-def generate_caption_stats(dataframe: pd.DataFrame, add_pos_tag_stats: bool, spacy_nlp, n_spacy_workers: int):
+def generate_caption_stats(dataframe: pd.DataFrame,
+                           pos_tag_stats: bool = True,
+                           readability_scores: bool = True,
+                           n_spacy_workers: int = 6,
+                           spacy_model: str = "en_core_web_lg"):
     logger.info(f"Generating caption statistics...")
     start = time.time()
+
+    spacy_nlp = spacy.load(spacy_model)
+    if readability_scores:
+        spacy_nlp.add_pipe(Readability())
+
     # Tokens and sentences
     num_tok = []
     num_sent = []
-    # Min length of sentences
+    # Min and Max length of sentences
     min_sent_len = []
+    max_sent_len = []
 
     # Named Entities
     num_ne = []
-    rat_ne_tokens = []
+    ne_texts = []  # surface form of the NEs
+    ne_types = []  # types of the NEs
 
     # POS Tags
     # counts
@@ -144,31 +157,54 @@ def generate_caption_stats(dataframe: pd.DataFrame, add_pos_tag_stats: bool, spa
     num_num = []  # numbers (IV, 1 billion, 1312, ...)
     num_adp = []  # adpositions (on, under, in, at, ...)
     num_adj = []  # adjectives (nice, fast, cool, ...)
-    # ratios
-    rat_noun_tokens = []
-    rat_propn_tokens = []
-    rat_all_noun_tokens = []
+
+    # ratios # TODO
+    ratio_ne_tokens, num_ne_tok = [], []
+    ratio_noun_tokens = []
+    ratio_propn_tokens = []
+    ratio_all_noun_tokens = []
+
+    # readability scores
+    fk_gl_score = []
+    fk_re_score = []
+    dc_score = []
 
     with tqdm(total=len(dataframe)) as pbar:
         # TODO whats a good batch_size?
         for doc in spacy_nlp.pipe(dataframe['caption'].astype(str),
-                                  batch_size=100,
                                   n_process=n_spacy_workers):
             # num tokens
             num_tok.append(len(doc))
+
             # num sentences
             num_sent.append(len(list(doc.sents)))
-            # min length of sentences
+            # min/max length of sentences
             min_len = 10000
+            max_len = -1
             for s in doc.sents:
                 min_len = min(min_len, len(s))
+                max_len = max(max_len, len(s))
             min_sent_len.append(min_len)
-            # num named entities
-            num_ne.append(len(doc.ents))
+            max_sent_len.append(max_len)
 
-            if add_pos_tag_stats:
-                # POS Tags
-                noun, propn, conj, verb, sym, num, adp, adj = 0, 0, 0, 0, 0, 0, 0, 0
+            # named entities
+            num_ne.append(len(doc.ents))
+            txt, typ = [], []
+            for ent in doc.ents:
+                typ.append(ent.label_)
+                txt.append(ent.text)
+            ne_texts.append(txt)
+            ne_types.append(typ)
+
+            # readability scores
+            if readability_scores:
+                fk_gl_score.append(doc._.flesch_kincaid_grade_level)
+                fk_re_score.append(doc._.flesch_kincaid_reading_ease)
+                dc_score.append(doc._.dale_chall)
+
+            # POS Tags
+            if pos_tag_stats:
+                noun, propn, conj, verb, sym, num, adp, adj, ne_tok = 0, 0, 0, 0, 0, 0, 0, 0, 0
                 for t in doc:
                     if t.pos_ == 'CONJ':
                         conj += 1
@@ -186,6 +222,11 @@ def generate_caption_stats(dataframe: pd.DataFrame, add_pos_tag_stats: bool, spa
                         verb += 1
                     elif t.pos_ == 'ADP':
                         adp += 1
+
+                    # number of tokens associated with a NE (to compute the ratio)
+                    if t.ent_iob_ == 'I' or t.ent_iob_ == 'B':
+                        ne_tok += 1
+
                 num_noun.append(noun)
                 num_propn.append(propn)
                 num_conj.append(conj)
@@ -195,15 +236,32 @@ def generate_caption_stats(dataframe: pd.DataFrame, add_pos_tag_stats: bool, spa
                 num_adp.append(adp)
                 num_adj.append(adj)
 
+                num_ne_tok.append(ne_tok)
+
             pbar.update(1)
+
+    # compute the rations
+    if pos_tag_stats:
+        np_num_tok = np.array(num_tok)
+        np_num_noun = np.array(num_noun)
+        np_num_propn = np.array(num_propn)
+        ratio_ne_tokens = (np.array(num_ne_tok) / np_num_tok)
+        ratio_noun_tokens = (np_num_noun / np_num_tok)
+        ratio_propn_tokens = (np_num_propn / np_num_tok)
+        ratio_all_noun_tokens = ((np_num_noun + np_num_propn) / np_num_tok)
 
     # add stats as columns to df
     dataframe['num_tok'] = num_tok
+
     dataframe['num_sent'] = num_sent
     dataframe['min_sent_len'] = min_sent_len
-    dataframe['num_ne'] = num_ne
+    dataframe['max_sent_len'] = max_sent_len
 
-    if add_pos_tag_stats:
+    dataframe['num_ne'] = num_ne
+    dataframe['ne_types'] = ne_types
+    dataframe['ne_texts'] = ne_texts
+
+    if pos_tag_stats:
         dataframe['num_nouns'] = num_noun
         dataframe['num_propn'] = num_propn
         dataframe['num_conj'] = num_conj
@@ -212,6 +270,16 @@ def generate_caption_stats(dataframe: pd.DataFrame, add_pos_tag_stats: bool, spa
         dataframe['num_num'] = num_num
         dataframe['num_adp'] = num_adp
         dataframe['num_adj'] = num_adj
+
+        dataframe['ratio_ne_tok'] = ratio_ne_tokens
+        dataframe['ratio_noun_tok'] = ratio_noun_tokens
+        dataframe['ratio_propn_tok'] = ratio_propn_tokens
+        dataframe['ratio_all_noun_tok'] = ratio_all_noun_tokens
+
+    if readability_scores:
+        dataframe['fk_re_score'] = fk_re_score
+        dataframe['fk_gl_score'] = fk_gl_score
+        dataframe['dc_score'] = dc_score
 
     dataframe.convert_dtypes()  # make sure that ints are not encoded as floats
     logger.info(f"Finished adding caption statistics in {time.time() - start} seconds!")
