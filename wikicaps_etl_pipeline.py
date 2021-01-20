@@ -5,6 +5,7 @@ from typing import Union
 
 import pandas as pd
 import spacy
+import nltk
 from loguru import logger
 from tqdm import tqdm
 
@@ -28,6 +29,16 @@ class WikiCapsETLPipeline(object):
         self.max_samples = config.extraction.max_samples
         self.caption_filters = create_filters_from_config(config)
         self.use_nltk = config.extraction.use_nltk
+
+        if self.use_nltk:
+            nltk.download('punkt')
+            nltk.download('word')
+            nltk.download('averaged_perceptron_tagger')
+            nltk.download('universal_tagset')
+            nltk.download('universal_treebanks_v20')
+            nltk.download('maxent_ne_chunker')
+
+
         # download setup
         self.download_with_skimage = config.extraction.download.with_skimage
         self.n_download_workers = config.extraction.download.n_workers
