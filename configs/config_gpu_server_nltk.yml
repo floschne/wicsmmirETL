@@ -10,8 +10,9 @@ extraction: # Extraction step
   shuffle: True
   random_seed: 1312
   pos_tag_stats: True # if True POS Tag statistics of the tokens get computed (takes longer)
-  readability_scores: True # if True Flesch-Kincaid and Dale-Chall readability scores get compute for each caption
+  readability_scores: False # if True Flesch-Kincaid and Dale-Chall readability scores get computed for each caption
   max_samples: 190000 # after filtering. 190k ~= 5% of WikiCaps
+  use_nltk: True
   filters:
     - NumTokens:
         columnId: num_tok

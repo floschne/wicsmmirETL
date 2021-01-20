@@ -27,6 +27,7 @@ class WikiCapsETLPipeline(object):
         self.add_readability_scores = config.extraction.readability_scores
         self.max_samples = config.extraction.max_samples
         self.caption_filters = create_filters_from_config(config)
+        self.use_nltk = config.extraction.use_nltk
         # download setup
         self.download_with_skimage = config.extraction.download.with_skimage
         self.n_download_workers = config.extraction.download.n_workers
@@ -123,7 +124,8 @@ class WikiCapsETLPipeline(object):
                                self.add_pos_tag_stats,
                                self.add_readability_scores,
                                self.n_spacy_workers,
-                               self.spacy_model)
+                               self.spacy_model,
+                               self.use_nltk)
         self._filter_by_caption()
 
         len_f_df = len(self.metadata)

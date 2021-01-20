@@ -7,12 +7,15 @@ from pathlib import Path
 from typing import Union, Tuple, List
 from urllib.error import HTTPError, URLError
 
+import nltk
 import numpy as np
 import pandas as pd
 import requests
 import spacy
 from PIL import Image, UnidentifiedImageError
 from loguru import logger
+from readability import Readability
+from readability.exceptions import ReadabilityException
 from skimage import io
 from spacy_readability import Readability
 from tqdm import tqdm
@@ -127,13 +130,15 @@ def generate_caption_stats(dataframe: pd.DataFrame,
                            pos_tag_stats: bool = True,
                            readability_scores: bool = True,
                            n_spacy_workers: int = 6,
-                           spacy_model: str = "en_core_web_lg"):
+                           spacy_model: str = "en_core_web_lg",
+                           use_nltk: bool = False):
     logger.info(f"Generating caption statistics...")
     start = time.time()
 
-    spacy_nlp = spacy.load(spacy_model)
-    if readability_scores:
-        spacy_nlp.add_pipe(Readability())
+    if not use_nltk:
+        spacy_nlp = spacy.load(spacy_model)
+        if readability_scores:
+            spacy_nlp.add_pipe(Readability())
 
     # Tokens and sentences
     num_tok = []
@@ -158,7 +163,7 @@ def generate_caption_stats(dataframe: pd.DataFrame,
     num_adp = []  # adpositions (on, under, in, at, ...)
     num_adj = []  # adjectives (nice, fast, cool, ...)
 
-    # ratios # TODO
+    # ratios
     ratio_ne_tokens, num_ne_tok = [], []
     ratio_noun_tokens = []
     ratio_propn_tokens = []
@@ -170,75 +175,165 @@ def generate_caption_stats(dataframe: pd.DataFrame,
     dc_score = []
 
     with tqdm(total=len(dataframe)) as pbar:
-        # TODO whats a good batch_size?
-        for doc in spacy_nlp.pipe(dataframe['caption'].astype(str),
-                                  n_process=n_spacy_workers):
-            # num tokens
-            num_tok.append(len(doc))
+        # TODO extract all of this code into an own module and have separate metadata generators for spaCy, nltk, etc.
+        if not use_nltk:
+            # TODO whats a good batch_size?
+            for doc in spacy_nlp.pipe(dataframe['caption'].astype(str),
+                                      n_process=n_spacy_workers):
+                # num tokens
+                num_tok.append(len(doc))
 
-            # num sentences
-            num_sent.append(len(list(doc.sents)))
-            # min/max length of sentences
-            min_len = 10000
-            max_len = -1
-            for s in doc.sents:
-                min_len = min(min_len, len(s))
-                max_len = max(max_len, len(s))
-            min_sent_len.append(min_len)
-            max_sent_len.append(max_len)
+                # num sentences
+                num_sent.append(len(list(doc.sents)))
+                # min/max length of sentences
+                min_len = 10000
+                max_len = -1
+                for s in doc.sents:
+                    min_len = min(min_len, len(s))
+                    max_len = max(max_len, len(s))
+                min_sent_len.append(min_len)
+                max_sent_len.append(max_len)
 
-            # named entities
-            num_ne.append(len(doc.ents))
-            txt, typ = [], []
-            for ent in doc.ents:
-                typ.append(ent.label_)
-                txt.append(ent.text)
-            ne_texts.append(txt)
-            ne_types.append(typ)
+                # named entities
+                num_ne.append(len(doc.ents))
+                txt, typ = [], []
+                for ent in doc.ents:
+                    typ.append(ent.label_)
+                    txt.append(ent.text)
+                ne_texts.append(txt)
+                ne_types.append(typ)
 
-            # readability scores
-            if readability_scores:
-                fk_gl_score.append(doc._.flesch_kincaid_grade_level)
-                fk_re_score.append(doc._.flesch_kincaid_reading_ease)
-                dc_score.append(doc._.dale_chall)
+                # readability scores
+                if readability_scores:
+                    fk_gl_score.append(doc._.flesch_kincaid_grade_level)
+                    fk_re_score.append(doc._.flesch_kincaid_reading_ease)
+                    dc_score.append(doc._.dale_chall)
 
-            # POS Tags
-            if pos_tag_stats:
-                noun, propn, conj, verb, sym, num, adp, adj, ne_tok = 0, 0, 0, 0, 0, 0, 0, 0, 0
-                for t in doc:
-                    if t.pos_ == 'CONJ':
-                        conj += 1
-                    elif t.pos_ == 'ADJ':
-                        adj += 1
-                    elif t.pos_ == 'NOUN':
-                        noun += 1
-                    elif t.pos_ == 'NUM':
-                        num += 1
-                    elif t.pos_ == 'PROPN':
-                        propn += 1
-                    elif t.pos_ == 'SYM':
-                        sym += 1
-                    elif t.pos_ == 'VERB':
-                        verb += 1
-                    elif t.pos_ == 'ADP':
-                        adp += 1
+                # POS Tags
+                if pos_tag_stats:
+                    noun, propn, conj, verb, sym, num, adp, adj, ne_tok = 0, 0, 0, 0, 0, 0, 0, 0, 0
+                    for t in doc:
+                        if t.pos_ == 'CONJ':
+                            conj += 1
+                        elif t.pos_ == 'ADJ':
+                            adj += 1
+                        elif t.pos_ == 'NOUN':
+                            noun += 1
+                        elif t.pos_ == 'NUM':
+                            num += 1
+                        elif t.pos_ == 'PROPN':
+                            propn += 1
+                        elif t.pos_ == 'SYM':
+                            sym += 1
+                        elif t.pos_ == 'VERB':
+                            verb += 1
+                        elif t.pos_ == 'ADP':
+                            adp += 1
 
-                    # number of tokens associated with a NE (to compute the ratio)
-                    if t.ent_iob_ == 'I' or t.ent_iob_ == 'B':
-                        ne_tok += 1
+                        # number of tokens associated with a NE (to compute the ratio)
+                        if t.ent_iob_ == 'I' or t.ent_iob_ == 'B':
+                            ne_tok += 1
 
-                num_noun.append(noun)
-                num_propn.append(propn)
-                num_conj.append(conj)
-                num_verb.append(verb)
-                num_sym.append(sym)
-                num_num.append(num)
-                num_adp.append(adp)
-                num_adj.append(adj)
+                    num_noun.append(noun)
+                    num_propn.append(propn)
+                    num_conj.append(conj)
+                    num_verb.append(verb)
+                    num_sym.append(sym)
+                    num_num.append(num)
+                    num_adp.append(adp)
+                    num_adj.append(adj)
 
-                num_ne_tok.append(ne_tok)
+                    num_ne_tok.append(ne_tok)
 
-            pbar.update(1)
+                pbar.update(1)
+        else:
+            for cap in dataframe['caption'].astype(str):
+                # num tokens
+                num_tok.append(len(nltk.word_tokenize(cap)))
+
+                # num sentences
+                sents = nltk.sent_tokenize(cap)
+                num_sent.append(len(sents))
+
+                # min/max length of sentences
+                min_len = 10000
+                max_len = -1
+                s_toks = []
+                for s in sents:
+                    toks = nltk.word_tokenize(s)
+                    s_toks.append(toks)
+                    min_len = min(min_len, len(toks))
+                    max_len = max(max_len, len(toks))
+                min_sent_len.append(min_len)
+                max_sent_len.append(max_len)
+
+                # readability scores
+                # FIXME currently not usable with NLTK... (because NaN values are dropped)
+                #  there is also an error while calling t Readability(cap) ctor...
+                if False:
+                    try:
+                        r = Readability(cap)
+                        flesch = r.flesch_kincaid()
+                        fk_gl_score.append(flesch.grade_level)
+                        fk_re_score.append(flesch.score)
+                        dc_score.append(r.dale_chall().score)
+                    except (ReadabilityException, Exception):
+                        fk_gl_score.append(np.NaN)
+                        fk_re_score.append(np.NaN)
+                        dc_score.append(np.NaN)
+
+                if pos_tag_stats:
+                    sent_pos_tags = nltk.pos_tag_sents(s_toks, 'universal')
+                    noun, propn, conj, verb, sym, num, adp, adj, ne_tok = 0, 0, 0, 0, 0, 0, 0, 0, 0
+                    for spt in sent_pos_tags:
+                        for pt in spt:
+                            if pt[1].upper() == 'CONJ':
+                                conj += 1
+                            elif pt[1].upper() == 'ADJ':
+                                adj += 1
+                            elif pt[1].upper() == 'NOUN':
+                                noun += 1
+                            elif pt[1].upper() == 'NUM':
+                                num += 1
+                            elif pt[1].upper() == 'PROPN':
+                                propn += 1
+                            elif pt[1].upper() == 'SYM':
+                                sym += 1
+                            elif pt[1].upper() == 'VERB':
+                                verb += 1
+                            elif pt[1].upper() == 'ADP':
+                                adp += 1
+
+                    num_noun.append(noun)
+                    num_propn.append(propn)
+                    num_conj.append(conj)
+                    num_verb.append(verb)
+                    num_sym.append(sym)
+                    num_num.append(num)
+                    num_adp.append(adp)
+                    num_adj.append(adj)
+
+                # named entities
+                # we have to tag again with a different tag set (upenn tree) for WAY better NER performance
+                num_nes, num_nes_tok = 0, 0
+                txt, typ = [], []
+                nes_sent = nltk.ne_chunk_sents(nltk.pos_tag_sents(map(nltk.word_tokenize, nltk.sent_tokenize(cap))))
+                for nes in nes_sent:
+                    for ne in nes:
+                        if isinstance(ne, nltk.Tree):
+                            num_nes += 1
+                            typ.append(str(ne.label()))
+                            t = ""
+                            for tok in ne:
+                                t += tok[0] + " "
+                            txt.append(t.strip())
+                            num_nes_tok += len(ne)
+                num_ne.append(num_nes)
+                ne_texts.append(txt)
+                ne_types.append(typ)
+                num_ne_tok.append(num_nes_tok)
+
+                pbar.update(1)
 
     # compute the rations
     if pos_tag_stats:
