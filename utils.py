@@ -14,6 +14,8 @@ import requests
 import spacy
 from PIL import Image, UnidentifiedImageError
 from loguru import logger
+from polyglot.downloader import downloader
+from polyglot.text import Text
 from readability import Readability
 from readability.exceptions import ReadabilityException
 from skimage import io
@@ -29,6 +31,13 @@ class ImageOutputFormat(str, Enum):
     NPZ = "npz"
     PNG = "png"
     JPG = "jpg"
+
+
+@unique
+class MetadataGeneratorBackend(str, Enum):
+    SPACY = "spacy"
+    NLTK = "nltk"
+    POLYGLOT = "polyglot"
 
 
 def build_wikimedia_url(wikimedia_file_id: str, width: int, direct: bool = True) -> str:
@@ -131,14 +140,9 @@ def generate_caption_stats(dataframe: pd.DataFrame,
                            readability_scores: bool = True,
                            n_spacy_workers: int = 6,
                            spacy_model: str = "en_core_web_lg",
-                           use_nltk: bool = False):
-    logger.info(f"Generating caption statistics...")
+                           backend: MetadataGeneratorBackend = MetadataGeneratorBackend.SPACY):
+    logger.info(f"Generating caption statistics using {backend.upper()}...")
     start = time.time()
-
-    if not use_nltk:
-        spacy_nlp = spacy.load(spacy_model)
-        if readability_scores:
-            spacy_nlp.add_pipe(Readability())
 
     # Tokens and sentences
     num_tok = []
@@ -176,7 +180,11 @@ def generate_caption_stats(dataframe: pd.DataFrame,
 
     with tqdm(total=len(dataframe)) as pbar:
         # TODO extract all of this code into an own module and have separate metadata generators for spaCy, nltk, etc.
-        if not use_nltk:
+        if backend == MetadataGeneratorBackend.SPACY:
+            # init spacy TODO: download the required model(s)
+            spacy_nlp = spacy.load(spacy_model)
+            if readability_scores:
+                spacy_nlp.add_pipe(Readability())
             # TODO whats a good batch_size?
             for doc in spacy_nlp.pipe(dataframe['caption'].astype(str),
                                       n_process=n_spacy_workers):
@@ -246,7 +254,14 @@ def generate_caption_stats(dataframe: pd.DataFrame,
                     num_ne_tok.append(ne_tok)
 
                 pbar.update(1)
-        else:
+        elif backend == MetadataGeneratorBackend.NLTK:
+            nltk.download('punkt')
+            nltk.download('word')
+            nltk.download('averaged_perceptron_tagger')
+            nltk.download('universal_tagset')
+            nltk.download('universal_treebanks_v20')
+            nltk.download('maxent_ne_chunker')
+
             for cap in dataframe['caption'].astype(str):
                 # num tokens
                 num_tok.append(len(nltk.word_tokenize(cap)))
@@ -334,6 +349,97 @@ def generate_caption_stats(dataframe: pd.DataFrame,
                 num_ne_tok.append(num_nes_tok)
 
                 pbar.update(1)
+        elif backend == MetadataGeneratorBackend.POLYGLOT:
+            # init
+            # pandarallel.initialize(nb_workers=n_spacy_workers) # FIXME doens't work..
+            downloader.download("embeddings2.en")
+            downloader.download("ner2.en")
+            downloader.download("pos2.en")
+
+            def __gen_polyglot_metadata_per_caption(df, pb):
+                caption = df['caption']
+                pg = Text(caption, hint_language_code='en')
+                pg.language = 'en'
+                # num tokens
+                n_tok = len(pg.words)
+
+                # num sentences
+                n_sent = len(pg.sentences)
+
+                # min/max length of sentences
+                min_s_len = 10000
+                max_s_len = -1
+                for s in pg.sentences:
+                    min_s_len = min(min_s_len, len(s.words))
+                    max_s_len = max(max_s_len, len(s.words))
+                # readability scores
+                # FIXME only available with spacy currently
+
+                # POS tags
+                n_noun, n_propn, n_conj, n_verb, n_sym, n_num, n_adp, n_adj = 0, 0, 0, 0, 0, 0, 0, 0
+                for pos in pg.pos_tags:
+                    if pos[1].upper() == 'CONJ':
+                        n_conj += 1
+                    elif pos[1].upper() == 'ADJ':
+                        n_adj += 1
+                    elif pos[1].upper() == 'NOUN':
+                        n_noun += 1
+                    elif pos[1].upper() == 'NUM':
+                        n_num += 1
+                    elif pos[1].upper() == 'PROPN':
+                        n_propn += 1
+                    elif pos[1].upper() == 'SYM':
+                        n_sym += 1
+                    elif pos[1].upper() == 'VERB':
+                        n_verb += 1
+                    elif pos[1].upper() == 'ADP':
+                        n_adp += 1
+
+                # named entities
+                num_nes_tok, ne_txt, ne_typ = 0, [], []
+                num_nes = len(pg.entities)
+                for ne in pg.entities:
+                    num_nes_tok += len(ne)
+                    ne_txt.append(" ".join(ne))
+                    ne_typ.append(ne.tag)
+
+                # compute the rations
+                r_ne_tokens = num_nes_tok / n_tok
+                r_noun_tokens = n_noun / n_tok
+                r_propn_tokens = n_propn / n_tok
+                r_all_noun_tokens = (n_noun + n_propn) / n_tok
+                d = {
+                    'num_tok': n_tok,
+                    'num_sent': n_sent,
+                    'min_sent_len': min_s_len,
+                    'max_sent_len': max_s_len,
+                    'num_ne': num_nes,
+                    'ne_types': ne_typ,
+                    'ne_texts': ne_txt,
+                    'num_propn': n_propn,
+                    'num_conj': n_conj,
+                    'num_verb': n_verb,
+                    'num_sym': n_sym,
+                    'num_num': n_num,
+                    'num_adp': n_adp,
+                    'num_adj': n_adj,
+                    'ratio_ne_tok': r_ne_tokens,
+                    'ratio_noun_tok': r_noun_tokens,
+                    'ratio_propn_tok': r_propn_tokens,
+                    'ratio_all_noun_tok': r_all_noun_tokens,
+                }
+
+                pb.update(1)
+
+                return d
+
+            # FIXME why the hec is this using ALL AVAILABLE CORES?!
+            metadata = dataframe.apply(__gen_polyglot_metadata_per_caption, axis=1, result_type='expand', args=(pbar,))
+            res = pd.concat([dataframe, metadata], axis=1)
+            res.convert_dtypes()
+
+            logger.info(f"Finished adding caption statistics in {time.time() - start} seconds!")
+            return res
 
     # compute the rations
     if pos_tag_stats:
@@ -345,36 +451,40 @@ def generate_caption_stats(dataframe: pd.DataFrame,
         ratio_propn_tokens = (np_num_propn / np_num_tok)
         ratio_all_noun_tokens = ((np_num_noun + np_num_propn) / np_num_tok)
 
+    res = dataframe.copy()
+
     # add stats as columns to df
-    dataframe['num_tok'] = num_tok
+    res['num_tok'] = num_tok
 
-    dataframe['num_sent'] = num_sent
-    dataframe['min_sent_len'] = min_sent_len
-    dataframe['max_sent_len'] = max_sent_len
+    res['num_sent'] = num_sent
+    res['min_sent_len'] = min_sent_len
+    res['max_sent_len'] = max_sent_len
 
-    dataframe['num_ne'] = num_ne
-    dataframe['ne_types'] = ne_types
-    dataframe['ne_texts'] = ne_texts
+    res['num_ne'] = num_ne
+    res['ne_types'] = ne_types
+    res['ne_texts'] = ne_texts
 
     if pos_tag_stats:
-        dataframe['num_nouns'] = num_noun
-        dataframe['num_propn'] = num_propn
-        dataframe['num_conj'] = num_conj
-        dataframe['num_verb'] = num_verb
-        dataframe['num_sym'] = num_sym
-        dataframe['num_num'] = num_num
-        dataframe['num_adp'] = num_adp
-        dataframe['num_adj'] = num_adj
+        res['num_nouns'] = num_noun
+        res['num_propn'] = num_propn
+        res['num_conj'] = num_conj
+        res['num_verb'] = num_verb
+        res['num_sym'] = num_sym
+        res['num_num'] = num_num
+        res['num_adp'] = num_adp
+        res['num_adj'] = num_adj
 
-        dataframe['ratio_ne_tok'] = ratio_ne_tokens
-        dataframe['ratio_noun_tok'] = ratio_noun_tokens
-        dataframe['ratio_propn_tok'] = ratio_propn_tokens
-        dataframe['ratio_all_noun_tok'] = ratio_all_noun_tokens
+        res['ratio_ne_tok'] = ratio_ne_tokens
+        res['ratio_noun_tok'] = ratio_noun_tokens
+        res['ratio_propn_tok'] = ratio_propn_tokens
+        res['ratio_all_noun_tok'] = ratio_all_noun_tokens
 
     if readability_scores:
-        dataframe['fk_re_score'] = fk_re_score
-        dataframe['fk_gl_score'] = fk_gl_score
-        dataframe['dc_score'] = dc_score
+        res['fk_re_score'] = fk_re_score
+        res['fk_gl_score'] = fk_gl_score
+        res['dc_score'] = dc_score
 
-    dataframe.convert_dtypes()  # make sure that ints are not encoded as floats
+    res.convert_dtypes()  # make sure that ints are not encoded as floats
     logger.info(f"Finished adding caption statistics in {time.time() - start} seconds!")
+
+    return res

@@ -6,13 +6,13 @@ run:
 
 extraction: # Extraction step
   read_from_wikicaps_datasource: True # if True the data is read from the raw wikicaps file otherwise from metadata_dataframe
-  wikicaps_datasource: ./data/wikicaps_data_list_unfiltered_1000
+  wikicaps_datasource: ./data/wikicaps_data_list_unfiltered
   shuffle: True
   random_seed: 1312
   pos_tag_stats: True # if True POS Tag statistics of the tokens get computed (takes longer)
-  readability_scores: True # if True Flesch-Kincaid and Dale-Chall readability scores get computed for each caption
-  max_samples: 300 # after filtering
-  metadata_generator_backend: spacy  # can be either polyglot, spacy or nltk
+  readability_scores: False # if True Flesch-Kincaid and Dale-Chall readability scores get computed for each caption
+  max_samples: 190000 # after filtering. 190k ~= 5% of WikiCaps
+  metadata_generator_backend: polyglot  # can be either polyglot, spacy or nltk
   filters:
     - NumTokens:
         columnId: num_tok
@@ -27,17 +27,18 @@ extraction: # Extraction step
         min: 1
   spacy:
     model: en_core_web_lg
-    use_gpu: False
-    n_workers: 6 # when using GPU, all workers allocate memory on a single GPU
+    use_gpu: True
+    n_workers: 4 # when using GPU, all workers allocate memory on a single GPU
 
   download:
-    with_skimage: True # otherwise with python requests and pillow
-    n_workers: 16
+    with_skimage: True # otherwise with python requests and pillow (SkImage seems to be more stable)
+    n_workers: 24
     max_img_width: 640 # in px
 
 
 transformation: # Transformation step
-  n_workers: 6
+  n_workers: 24
+  metadata_file: ./wikicaps_etl_out/metadata.df.feather # TODO
 
   image:
     - Resize:
@@ -48,10 +49,9 @@ transformation: # Transformation step
         optimize: True
         dpi: 72
 
-
 output: # Loading step and general output stuff
   log_file: ./wikicaps_etl_out/full.log
   img_format: png # choice of: png, jpg, npy, npz # TODO transformation only supports png and jpg for now
   img_directory: ./wikicaps_etl_out/images/
-  metadata_file: ./wikicaps_etl_out/metadata_spacy.df.feather
+  metadata_file: ./wikicaps_etl_out/metadata_polyglot.df.feather
   path_caption_csv_file: ./wikicaps_etl_out/path_caption.csv

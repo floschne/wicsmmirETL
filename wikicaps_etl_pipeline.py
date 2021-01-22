@@ -28,16 +28,7 @@ class WikiCapsETLPipeline(object):
         self.add_readability_scores = config.extraction.readability_scores
         self.max_samples = config.extraction.max_samples
         self.caption_filters = create_filters_from_config(config)
-        self.use_nltk = config.extraction.use_nltk
-
-        if self.use_nltk:
-            nltk.download('punkt')
-            nltk.download('word')
-            nltk.download('averaged_perceptron_tagger')
-            nltk.download('universal_tagset')
-            nltk.download('universal_treebanks_v20')
-            nltk.download('maxent_ne_chunker')
-
+        self.metadata_generator_backend = config.extraction.metadata_generator_backend
 
         # download setup
         self.download_with_skimage = config.extraction.download.with_skimage
@@ -131,12 +122,12 @@ class WikiCapsETLPipeline(object):
             self.wikicaps_data = self.wikicaps_data.sample(frac=1, random_state=self.random_seed)
 
         logger.info("Generating Metadata...")
-        generate_caption_stats(self.wikicaps_data,
-                               self.add_pos_tag_stats,
-                               self.add_readability_scores,
-                               self.n_spacy_workers,
-                               self.spacy_model,
-                               self.use_nltk)
+        self.wikicaps_data = generate_caption_stats(self.wikicaps_data,
+                                                    self.add_pos_tag_stats,
+                                                    self.add_readability_scores,
+                                                    self.n_spacy_workers,
+                                                    self.spacy_model,
+                                                    self.metadata_generator_backend)
         self._filter_by_caption()
 
         len_f_df = len(self.metadata)
@@ -161,7 +152,8 @@ class WikiCapsETLPipeline(object):
         start = time.time()
         self.metadata = self.wikicaps_data.copy()
         for f in self.caption_filters:
-            assert f.cId in self.get_column_names()
+            assert f.cId in self.get_column_names(), \
+                f"Cannot apply filter {f.name} because there is no column '{f.cId}' in the dataframe!"
             self.metadata = self.metadata.where(f).dropna()
         len_filtered_df = len(self.metadata)
         # cast unnecessary floats back to ints (they're converted to floats after filtering for what ever reason)

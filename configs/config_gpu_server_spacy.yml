@@ -12,7 +12,7 @@ extraction: # Extraction step
   pos_tag_stats: True # if True POS Tag statistics of the tokens get computed (takes longer)
   readability_scores: True # if True Flesch-Kincaid and Dale-Chall readability scores get computed for each caption
   max_samples: 190000 # after filtering. 190k ~= 5% of WikiCaps
-  use_nltk: False
+  metadata_generator_backend: spacy  # can be either polyglot, spacy or nltk
   filters:
     - NumTokens:
         columnId: num_tok
