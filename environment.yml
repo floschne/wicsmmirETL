@@ -208,4 +208,8 @@ dependencies:
     - py-readability-metrics
     - nltk
     - ujson==1.35
+    - polyglot
+    - pyicu
+    - pycld2
+    - Morfessor
 prefix: /home/p0w3r/bin/miniconda3/envs/wikicaps
