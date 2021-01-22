@@ -1,5 +1,6 @@
 import hashlib
 import re
+import regex
 import time
 import urllib.parse
 from enum import Enum, unique
@@ -14,6 +15,7 @@ import requests
 import spacy
 from PIL import Image, UnidentifiedImageError
 from loguru import logger
+# from pandarallel import pandarallel
 from polyglot.downloader import downloader
 from polyglot.text import Text
 from readability import Readability
@@ -351,13 +353,20 @@ def generate_caption_stats(dataframe: pd.DataFrame,
                 pbar.update(1)
         elif backend == MetadataGeneratorBackend.POLYGLOT:
             # init
-            # pandarallel.initialize(nb_workers=n_spacy_workers) # FIXME doens't work..
+            # pandarallel.initialize()  # FIXME doens't work..
             downloader.download("embeddings2.en")
             downloader.download("ner2.en")
             downloader.download("pos2.en")
 
             def __gen_polyglot_metadata_per_caption(df, pb):
                 caption = df['caption']
+
+                # https://github.com/aboSamoor/polyglot/issues/71
+                # removing "bad unicode" characters to avoid runtime exceptions
+                bad_chars_regex = regex.compile(r"\p{Cc}|\p{Cs}")
+                # caption = str(caption, encoding='utf-8')
+                caption = bad_chars_regex.sub("", caption)
+
                 pg = Text(caption, hint_language_code='en')
                 pg.language = 'en'
                 # num tokens

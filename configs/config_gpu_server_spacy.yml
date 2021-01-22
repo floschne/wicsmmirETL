@@ -53,5 +53,5 @@ output: # Loading step and general output stuff
   log_file: ./wikicaps_etl_out/full.log
   img_format: png # choice of: png, jpg, npy, npz # TODO transformation only supports png and jpg for now
   img_directory: ./wikicaps_etl_out/images/
-  metadata_file: ./wikicaps_etl_out/metadata.df.feather
+  metadata_file: ./wikicaps_etl_out/metadata_spacy.df.feather
   path_caption_csv_file: ./wikicaps_etl_out/path_caption.csv
