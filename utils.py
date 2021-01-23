@@ -359,13 +359,12 @@ def generate_caption_stats(dataframe: pd.DataFrame,
             downloader.download("pos2.en")
 
             def __gen_polyglot_metadata_per_caption(df, pb):
-                caption = df['caption']
+                caption = str(df['caption']).encode('utf-8')
 
                 # https://github.com/aboSamoor/polyglot/issues/71
                 # removing "bad unicode" characters to avoid runtime exceptions
-                bad_chars_regex = regex.compile(r"\p{Cc}|\p{Cs}")
                 # caption = str(caption, encoding='utf-8')
-                caption = bad_chars_regex.sub("", caption)
+                caption = regex.sub(r"\p{C}", "", caption.decode('utf-8'))
 
                 pg = Text(caption, hint_language_code='en')
                 pg.language = 'en'
