@@ -359,87 +359,110 @@ def generate_caption_stats(dataframe: pd.DataFrame,
             downloader.download("pos2.en")
 
             def __gen_polyglot_metadata_per_caption(df, pb):
-                caption = str(df['caption']).encode('utf-8')
-
-                # https://github.com/aboSamoor/polyglot/issues/71
-                # removing "bad unicode" characters to avoid runtime exceptions
-                # caption = str(caption, encoding='utf-8')
-                caption = regex.sub(r"\p{C}", "", caption.decode('utf-8'))
-
-                pg = Text(caption, hint_language_code='en')
-                pg.language = 'en'
-                # num tokens
-                n_tok = len(pg.words)
-
-                # num sentences
-                n_sent = len(pg.sentences)
-
-                # min/max length of sentences
-                min_s_len = 10000
-                max_s_len = -1
-                for s in pg.sentences:
-                    min_s_len = min(min_s_len, len(s.words))
-                    max_s_len = max(max_s_len, len(s.words))
-                # readability scores
-                # FIXME only available with spacy currently
-
-                # POS tags
-                n_noun, n_propn, n_conj, n_verb, n_sym, n_num, n_adp, n_adj = 0, 0, 0, 0, 0, 0, 0, 0
-                for pos in pg.pos_tags:
-                    if pos[1].upper() == 'CONJ':
-                        n_conj += 1
-                    elif pos[1].upper() == 'ADJ':
-                        n_adj += 1
-                    elif pos[1].upper() == 'NOUN':
-                        n_noun += 1
-                    elif pos[1].upper() == 'NUM':
-                        n_num += 1
-                    elif pos[1].upper() == 'PROPN':
-                        n_propn += 1
-                    elif pos[1].upper() == 'SYM':
-                        n_sym += 1
-                    elif pos[1].upper() == 'VERB':
-                        n_verb += 1
-                    elif pos[1].upper() == 'ADP':
-                        n_adp += 1
-
-                # named entities
-                num_nes_tok, ne_txt, ne_typ = 0, [], []
-                num_nes = len(pg.entities)
-                for ne in pg.entities:
-                    num_nes_tok += len(ne)
-                    ne_txt.append(" ".join(ne))
-                    ne_typ.append(ne.tag)
-
-                # compute the rations
-                r_ne_tokens = num_nes_tok / n_tok
-                r_noun_tokens = n_noun / n_tok
-                r_propn_tokens = n_propn / n_tok
-                r_all_noun_tokens = (n_noun + n_propn) / n_tok
                 d = {
-                    'num_tok': n_tok,
-                    'num_sent': n_sent,
-                    'min_sent_len': min_s_len,
-                    'max_sent_len': max_s_len,
-                    'num_ne': num_nes,
-                    'ne_types': ne_typ,
-                    'ne_texts': ne_txt,
-                    'num_propn': n_propn,
-                    'num_conj': n_conj,
-                    'num_verb': n_verb,
-                    'num_sym': n_sym,
-                    'num_num': n_num,
-                    'num_adp': n_adp,
-                    'num_adj': n_adj,
-                    'ratio_ne_tok': r_ne_tokens,
-                    'ratio_noun_tok': r_noun_tokens,
-                    'ratio_propn_tok': r_propn_tokens,
-                    'ratio_all_noun_tok': r_all_noun_tokens,
+                    'num_tok': 0,
+                    'num_sent': 0,
+                    'min_sent_len': 0,
+                    'max_sent_len': 0,
+                    'num_ne': 0,
+                    'ne_types': [],
+                    'ne_texts': [],
+                    'num_propn': 0,
+                    'num_conj': 0,
+                    'num_verb': 0,
+                    'num_sym': 0,
+                    'num_num': 0,
+                    'num_adp': 0,
+                    'num_adj': 0,
+                    'ratio_ne_tok': 0.,
+                    'ratio_noun_tok': 0.,
+                    'ratio_propn_tok': 0.,
+                    'ratio_all_noun_tok': 0.,
                 }
+                try:
+                    caption = str(df['caption']).encode('utf-8')
+                    # https://github.com/aboSamoor/polyglot/issues/71
+                    # removing "bad unicode" characters to avoid runtime exceptions
+                    # caption = str(caption, encoding='utf-8')
+                    caption = regex.sub(r"\p{C}", "", caption.decode('utf-8'))
 
-                pb.update(1)
+                    pg = Text(caption, hint_language_code='en')
+                    pg.language = 'en'
+                    # num tokens
+                    n_tok = len(pg.words)
 
-                return d
+                    # num sentences
+                    n_sent = len(pg.sentences)
+
+                    # min/max length of sentences
+                    min_s_len = 10000
+                    max_s_len = -1
+                    for s in pg.sentences:
+                        min_s_len = min(min_s_len, len(s.words))
+                        max_s_len = max(max_s_len, len(s.words))
+                    # readability scores
+                    # FIXME only available with spacy currently
+
+                    # POS tags
+                    n_noun, n_propn, n_conj, n_verb, n_sym, n_num, n_adp, n_adj = 0, 0, 0, 0, 0, 0, 0, 0
+                    for pos in pg.pos_tags:
+                        if pos[1].upper() == 'CONJ':
+                            n_conj += 1
+                        elif pos[1].upper() == 'ADJ':
+                            n_adj += 1
+                        elif pos[1].upper() == 'NOUN':
+                            n_noun += 1
+                        elif pos[1].upper() == 'NUM':
+                            n_num += 1
+                        elif pos[1].upper() == 'PROPN':
+                            n_propn += 1
+                        elif pos[1].upper() == 'SYM':
+                            n_sym += 1
+                        elif pos[1].upper() == 'VERB':
+                            n_verb += 1
+                        elif pos[1].upper() == 'ADP':
+                            n_adp += 1
+
+                    # named entities
+                    num_nes_tok, ne_txt, ne_typ = 0, [], []
+                    num_nes = len(pg.entities)
+                    for ne in pg.entities:
+                        num_nes_tok += len(ne)
+                        ne_txt.append(" ".join(ne))
+                        ne_typ.append(ne.tag)
+
+                    # compute the rations
+                    r_ne_tokens = num_nes_tok / n_tok
+                    r_noun_tokens = n_noun / n_tok
+                    r_propn_tokens = n_propn / n_tok
+                    r_all_noun_tokens = (n_noun + n_propn) / n_tok
+                    d = {
+                        'num_tok': n_tok,
+                        'num_sent': n_sent,
+                        'min_sent_len': min_s_len,
+                        'max_sent_len': max_s_len,
+                        'num_ne': num_nes,
+                        'ne_types': ne_typ,
+                        'ne_texts': ne_txt,
+                        'num_propn': n_propn,
+                        'num_conj': n_conj,
+                        'num_verb': n_verb,
+                        'num_sym': n_sym,
+                        'num_num': n_num,
+                        'num_adp': n_adp,
+                        'num_adj': n_adj,
+                        'ratio_ne_tok': r_ne_tokens,
+                        'ratio_noun_tok': r_noun_tokens,
+                        'ratio_propn_tok': r_propn_tokens,
+                        'ratio_all_noun_tok': r_all_noun_tokens,
+                    }
+                except Exception as e:
+                    logger.error(f"Critical error occurred with caption of WikiCaps ID{df['wikicaps_id']}!")
+                    logger.error(str(e))
+                    return
+                finally:
+                    pb.update(1)
+                    return d
 
             # FIXME why the hec is this using ALL AVAILABLE CORES?!
             metadata = dataframe.apply(__gen_polyglot_metadata_per_caption, axis=1, result_type='expand', args=(pbar,))
