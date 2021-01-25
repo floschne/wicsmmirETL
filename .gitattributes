@@ -5,3 +5,5 @@ data/coco_raw.df.feather filter=lfs diff=lfs merge=lfs -text
 data/wikicaps_metadata_nltk.df.feather filter=lfs diff=lfs merge=lfs -text
 data/wikicaps_metadata_spaCy.df.feather filter=lfs diff=lfs merge=lfs -text
 data/wikicaps_metadata_spacy.df.feather filter=lfs diff=lfs merge=lfs -text
+data/coco_metadata_polyglot.df.feather filter=lfs diff=lfs merge=lfs -text
+data/wikicaps_metadata_polyglot.df.feather filter=lfs diff=lfs merge=lfs -text
