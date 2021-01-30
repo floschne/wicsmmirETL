@@ -128,6 +128,7 @@ class WikiCapsETLPipeline(object):
                                                     self.n_spacy_workers,
                                                     self.spacy_model,
                                                     self.metadata_generator_backend)
+        self._persist_metadata(full=True)
         self._filter_by_caption()
 
         len_f_df = len(self.metadata)
@@ -202,10 +203,16 @@ class WikiCapsETLPipeline(object):
 
         logger.info(f"Finished Transformation Step in {time.time() - start} seconds!")
 
-    def _persist_metadata(self):
-        logger.info(f"Persisting metadata at {str(self.metadata_output_file)}")
+    def _persist_metadata(self, full=False):
+        if full:
+            dst_p = self.metadata_output_file.parent.joinpath(self.metadata_output_file.stem +
+                                                              '_full' +
+                                                              "".join(self.metadata_output_file.suffixes))
+        else:
+            dst_p = self.metadata_output_file
+        logger.info(f"Persisting metadata at {str(dst_p)}")
         start = time.time()
-        self.metadata.reset_index(drop=True).to_feather(self.metadata_output_file)
+        self.metadata.reset_index(drop=True).to_feather(dst_p)
         logger.info(f"Finished persisting metadata in {time.time() - start} seconds!")
 
     def _generate_path_caption_csv(self):
