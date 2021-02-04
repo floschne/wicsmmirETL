@@ -1,8 +1,19 @@
-# WikiCaps ETL Pipeline
+# WICSMMIR ETL Pipeline
+
+# WORK IN PROGRESS!
+
+A simple and efficient ETL Pipeline to access and transform the WikiCaps dataset.
+
+The  tool is capable of
+- collecting linguistic metadata based on the captions using different models and frameworks
+- flexibly filtering the data with user-defined filters
+- downloading the images in parallel
+- applying customizable transformations to the images and text after the download
+- persisting the data in an easy to use and efficient format
 
 ## Metadata Columns
 
-The ETL Pipeline outputs a Pandas DataFrame containing metadata about the captions in WikiCaps.
+The ETL Pipeline outputs a Pandas DataFrame containing metadata about the captions.
 
 #### How to read the DataFrame
 
@@ -48,3 +59,13 @@ metadata = pd.read_feather("path/to/metadata.feather", use_threads=True)
 *** This column is only available if `config.input_data.readability_scores == True`
 . [Click here](https://en.wikipedia.org/wiki/List_of_readability_tests_and_formulas) for more information about
 Readability Scores
+
+## WikiCaps publication
+For more Information about the original WikiCaps Dataset, see [https://www.cl.uni-heidelberg.de/statnlpgroup/wikicaps/](https://www.cl.uni-heidelberg.de/statnlpgroup/wikicaps/)
+
+```
+Shigehiko Schamoni, Julian Hitschler and Stefan Riezler
+A Dataset and Reranking Method for Multimodal MT of User-Generated Image Captions
+Proceedings of the 13th biennial conference of the Association for Machine Translation in the Americas (AMTA), Boston, MA, USA, 2018
+```
+
