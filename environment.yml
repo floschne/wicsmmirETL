@@ -205,5 +205,11 @@ dependencies:
     - syllapy==0.7.1
     - textstat==0.7.0
     - torch==1.7.1
+    - py-readability-metrics
+    - nltk
     - ujson==1.35
+    - polyglot
+    - pyicu
+    - pycld2
+    - Morfessor
 prefix: /home/p0w3r/bin/miniconda3/envs/wikicaps

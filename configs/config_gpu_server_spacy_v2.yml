@@ -10,7 +10,9 @@ extraction: # Extraction step
   shuffle: True
   random_seed: 1312
   pos_tag_stats: True # if True POS Tag statistics of the tokens get computed (takes longer)
-  max_samples: 190000 # after filtering. 190k ~= 5% of WikiCaps
+  readability_scores: True # if True Flesch-Kincaid and Dale-Chall readability scores get computed for each caption
+  max_samples: 400000 # after filtering. 380k ~= 10% of WikiCaps
+  metadata_generator_backend: spacy  # can be either polyglot, spacy or nltk
   filters:
     - NumTokens:
         columnId: num_tok
@@ -48,8 +50,8 @@ transformation: # Transformation step
         dpi: 72
 
 output: # Loading step and general output stuff
-  log_file: ./wikicaps_etl_out/full.log
+  log_file: ./wikicaps_etl_out/full_v2.log
   img_format: png # choice of: png, jpg, npy, npz # TODO transformation only supports png and jpg for now
   img_directory: ./wikicaps_etl_out/images/
-  metadata_file: ./wikicaps_etl_out/metadata.df.feather
-  path_caption_csv_file: ./wikicaps_etl_out/path_caption.csv
+  metadata_file: ./wikicaps_etl_out/metadata_spacy_v2.df.feather
+  path_caption_csv_file: ./wikicaps_etl_out/path_caption_v2.csv

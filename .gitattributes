@@ -1,1 +1,12 @@
 data/wikicaps_data_list_unfiltered filter=lfs diff=lfs merge=lfs -text
+data/coco_metadata_nltk.df.feather filter=lfs diff=lfs merge=lfs -text
+data/coco_metadata_spacy.df.feather filter=lfs diff=lfs merge=lfs -text
+data/coco_raw.df.feather filter=lfs diff=lfs merge=lfs -text
+data/wikicaps_metadata_nltk.df.feather filter=lfs diff=lfs merge=lfs -text
+data/wikicaps_metadata_spaCy.df.feather filter=lfs diff=lfs merge=lfs -text
+data/wikicaps_metadata_spacy.df.feather filter=lfs diff=lfs merge=lfs -text
+data/coco_metadata_polyglot.df.feather filter=lfs diff=lfs merge=lfs -text
+data/wikicaps_metadata_polyglot.df.feather filter=lfs diff=lfs merge=lfs -text
+data/coco_vs_wikicaps_metadata.df.feather filter=lfs diff=lfs merge=lfs -text
+data/v1/test_set_v1.df.feather filter=lfs diff=lfs merge=lfs -text
+data/v1/train_set_v1.df.feather filter=lfs diff=lfs merge=lfs -text
