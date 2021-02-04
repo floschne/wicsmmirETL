@@ -128,6 +128,7 @@ class WikiCapsETLPipeline(object):
                                                     self.n_spacy_workers,
                                                     self.spacy_model,
                                                     self.metadata_generator_backend)
+        self.metadata = self.wikicaps_data.copy()
         self._persist_metadata(full=True)
         self._filter_by_caption()
 
@@ -151,7 +152,6 @@ class WikiCapsETLPipeline(object):
         logger.info(
             f"Filtering WikiCaps data of {len(self.wikicaps_data)} rows by {len(self.caption_filters)} caption filters!")
         start = time.time()
-        self.metadata = self.wikicaps_data.copy()
         for f in self.caption_filters:
             assert f.cId in self.get_column_names(), \
                 f"Cannot apply filter {f.name} because there is no column '{f.cId}' in the dataframe!"
