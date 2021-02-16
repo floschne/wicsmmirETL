@@ -60,7 +60,11 @@ install:
     - conda info --all;
     - conda update --name base --channel defaults --quiet conda;
     # install environment
-    - conda env create --file environment.yml -q
+    - if [[ -d $MINICONDA_PATH/envs/wicsmmir ]]; then
+          echo "miniconda environment already available from cache";
+      else
+          conda env create --file environment.yml -q;
+      fi;
     # download spacy models
     - conda activate wicsmmir
     - python -m spacy download en_core_web_sm -q
