@@ -212,4 +212,5 @@ dependencies:
     - pyicu
     - pycld2
     - Morfessor
+    - pytest
 prefix: /home/p0w3r/bin/miniconda3/envs/wikicaps

@@ -8,11 +8,7 @@ from omegaconf import OmegaConf
 
 from wikicaps_etl_pipeline import WikiCapsETLPipeline
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, default='./config.yml')
-    opts = parser.parse_args()
-
+def main(opts):
     # load config
     config = OmegaConf.load(opts.config)
 
@@ -36,3 +32,11 @@ if __name__ == '__main__':
     pipeline = WikiCapsETLPipeline(config)
 
     pipeline.run()
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=str, default='./config.yml')
+    opts = parser.parse_args()
+
+    main(opts)
