@@ -58,12 +58,12 @@ install:
     - conda info --all;
     - conda update --name base --channel defaults --quiet conda;
     # install environment
-    - conda env create --file environment.yml
+    - conda env create --file environment.yml -q
     # download spacy models
     - conda activate wicsmmir
-    - python -m spacy download en_core_web_sm
-    - python -m spacy download en_core_web_md
-    - python -m spacy download en_core_web_lg
+    - python -m spacy download en_core_web_sm -q
+    - python -m spacy download en_core_web_md -q
+    - python -m spacy download en_core_web_lg -q
 
 before_script:
     - export PYTHONPATH=$PYTHONPATH:$(pwd)
