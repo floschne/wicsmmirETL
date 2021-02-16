@@ -1,9 +1,8 @@
-from typing import Tuple
-
-from PIL import Image
 from loguru import logger
 
-from transformations.image_transformation_base import ImageTransformationBase
+from .compression_transformation import CompressionTransformation
+from .image_transformation_base import ImageTransformationBase
+from .resize_transformation import ResizeTransformation
 
 
 def create_image_transformations_from_config(config):
@@ -26,26 +25,3 @@ def create_image_transformations_from_config(config):
         return transformations
     except ValueError:
         logger.exception("Cannot parse Transformation Config!")
-
-
-class ResizeTransformation(ImageTransformationBase):
-    def apply(self, img: Image, **kwargs) -> Image:
-        img.thumbnail([self.maxWidth, self.maxHeight], resample=self.resampling)
-        return img
-
-    def __init__(self, maxWidth: int, maxHeight: int, resampling: int = Image.BICUBIC):
-        super().__init__("Resize")
-        self.maxWidth = maxWidth
-        self.maxHeight = maxHeight
-        self.resampling = resampling
-
-
-class CompressionTransformation(ImageTransformationBase):
-    def __init__(self, optimize: bool, dpi: Tuple[int, int]):
-        super().__init__("Compress")
-        self.optimize = optimize
-        self.dpi = dpi
-
-    def apply(self, img: Image, **kwargs) -> Image:
-        img.save(kwargs['img_path'], optimize=self.optimize, dpi=self.dpi)
-        return img
