@@ -258,7 +258,7 @@ def generate_caption_stats(dataframe: pd.DataFrame,
                 pbar.update(1)
         elif backend == MetadataGeneratorBackend.NLTK:
             nltk.download('punkt')
-            nltk.download('word')
+            nltk.download('words')
             nltk.download('averaged_perceptron_tagger')
             nltk.download('universal_tagset')
             nltk.download('universal_treebanks_v20')

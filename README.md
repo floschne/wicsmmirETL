@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.com/floschne/wicsmmirETL.svg?branch=main)](https://travis-ci.com/floschne/wicsmmirETL)
+
 # WICSMMIR ETL Pipeline
 
 # WORK IN PROGRESS!

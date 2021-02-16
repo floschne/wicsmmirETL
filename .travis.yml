@@ -1,0 +1,80 @@
+language: shell
+
+os:
+    - linux
+
+dist:
+    - bionic
+
+env:
+    - CONDA_PYTHON=3.6
+
+before_cache: # https://github.com/conda/conda/issues/8462
+    - rm -rf $HOME/miniconda/locks $HOME/miniconda/pkgs $HOME/miniconda/var $HOME/miniconda/envs/test-environment/conda-meta/history $HOME/miniconda/lib/python3.6/__pycache__
+
+cache:
+    directories:
+        - $HOME/miniconda
+git:
+    quiet: true
+
+before_install: # https://github.com/conda/conda/issues/8462
+    - sudo apt-get update
+    - sudo apt-get install python-numpy libicu-dev  # for polyglot
+    # Set conda path info
+    - MINICONDA_PATH=$HOME/miniconda;
+    - MINICONDA_SUB_PATH=$MINICONDA_PATH/bin;
+    # Obtain miniconda installer
+    - if [[ -f $HOME/download/miniconda.sh ]]; then
+          echo "miniconda.sh for posix already available from cache";
+        else
+          mkdir -p $HOME/download;
+          if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
+            echo "downloading miniconda.sh for linux";
+            wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O $HOME/download/miniconda.sh;
+          elif  [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+            echo "downloading miniconda.sh for osx";
+            wget https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh -O $HOME/download/miniconda.sh;
+          fi;
+      fi;
+install:
+    # Install miniconda https://github.com/conda/conda/issues/8462
+    - if [[ -d $MINICONDA_SUB_PATH ]]; then
+          echo "miniconda for posix already available from cache";
+        else
+          echo "installing miniconda for posix";
+          bash $HOME/download/miniconda.sh -b -u -p $MINICONDA_PATH;
+      fi;
+    - export PATH="$MINICONDA_PATH:$MINICONDA_SUB_PATH:$PATH";
+    - hash -r;
+    - echo $TRAVIS_OS_NAME
+    - echo $TRAVIS_PYTHON_VERSION
+    - echo $CONDA_PYTHON
+    # - if [[ "$TRAVIS_OS_NAME" != "windows" ]]; then
+    #     conda init `basename $SHELL` --quiet;
+    #     source ~/.bashrc;
+    #   fi;
+    - conda config --set always_yes yes --set changeps1 no;
+    - source $MINICONDA_PATH/etc/profile.d/conda.sh
+    # Useful for debugging any issues with conda
+    - conda info --all;
+    - conda update --name base --channel defaults --quiet conda;
+    # install environment
+    - if [[ -d $MINICONDA_PATH/envs/wicsmmir ]]; then
+          echo "miniconda environment already available from cache";
+      else
+          conda env create --file environment.yml -q;
+      fi;
+    # download spacy models
+    - conda activate wicsmmir
+    - python -m spacy download en_core_web_sm -q
+    - python -m spacy download en_core_web_md -q
+    - python -m spacy download en_core_web_lg -q
+
+before_script:
+    - export PYTHONPATH=$PYTHONPATH:$(pwd)
+
+script:
+    - conda activate wicsmmir
+    - pytest
+
