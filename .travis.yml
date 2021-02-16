@@ -1,0 +1,41 @@
+os:
+    - linux
+
+dist:
+    - bionic
+
+env:
+    - CONDA_PYTHON=3.6
+
+before_cache: # https://github.com/conda/conda/issues/8462
+    - rm -rf $HOME/miniconda/locks $HOME/miniconda/pkgs $HOME/miniconda/var $HOME/miniconda/envs/test-environment/conda-meta/history $HOME/miniconda/lib/python3.6/__pycache__
+
+cache:
+    directories:
+        - $HOME/miniconda
+
+before_install:
+    - sudo apt-get update
+    - sudo apt-get install python-numpy libicu-dev  # for polyglot
+
+install:
+    # Install miniconda
+    - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh;
+    - bash miniconda.sh -b -p $HOME/miniconda
+    - export PATH="$HOME/miniconda/bin:$PATH"
+    - hash -r
+    - conda config --set always_yes yes --set changeps1 no
+    - conda update -q conda
+    # install environment
+    - conda env create --file environment.yml
+    # download spacy models
+    - python -m spacy download en_core_web_sm
+    - python -m spacy download en_core_web_md
+    - python -m spacy download en_core_web_lg
+
+before_script:
+    - export PYTHONPATH=$PYTHONPATH:$(pwd)
+
+script:
+    - pytest
+
