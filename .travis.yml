@@ -60,6 +60,7 @@ install:
     # install environment
     - conda env create --file environment.yml
     # download spacy models
+    - conda activate wicsmmir
     - python -m spacy download en_core_web_sm
     - python -m spacy download en_core_web_md
     - python -m spacy download en_core_web_lg
@@ -68,5 +69,6 @@ before_script:
     - export PYTHONPATH=$PYTHONPATH:$(pwd)
 
 script:
+    - conda activate wicsmmir
     - pytest
 
