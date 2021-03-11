@@ -48,6 +48,10 @@ transformation: # Transformation step
     - Compress:
         optimize: True
         dpi: 72
+    - WebP:
+        lossless: True
+        quality: 33
+        method: 6
 
 output: # Loading step and general output stuff
   log_file: ./wikicaps_etl_out/full_v2.log

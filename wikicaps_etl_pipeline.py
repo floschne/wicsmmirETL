@@ -198,7 +198,9 @@ class WikiCapsETLPipeline(object):
                 success = [s[1] for s in sorted(success)]
 
         # remove images where the transformation status was erroneous
-        logger.warning(f"Removing {len(success) - sum(success)} samples due to errors while applying transformations!")
+        erroneous = len(success) - sum(success)
+        if erroneous != 0:
+            logger.warning(f"Removing {erroneous} samples due to errors while applying transformations!")
         self.metadata = self.metadata[success]
 
         logger.info(f"Finished Transformation Step in {time.time() - start} seconds!")

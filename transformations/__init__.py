@@ -3,6 +3,7 @@ from loguru import logger
 from .compression_transformation import CompressionTransformation
 from .image_transformation_base import ImageTransformationBase
 from .resize_transformation import ResizeTransformation
+from .webp_transformation import WebPTransformation
 
 
 def create_image_transformations_from_config(config):
@@ -20,6 +21,11 @@ def create_image_transformations_from_config(config):
                 optimize = t[name].optimize
                 dpi = (t[name].dpi, t[name].dpi)
                 transformations.append(CompressionTransformation(optimize, dpi))
+            elif "webp" == name.lower():
+                lossless = t[name].lossless
+                quality = t[name].quality
+                method = t[name].method
+                transformations.append(WebPTransformation(lossless, quality, method))
             else:
                 raise ValueError(f"Cannot parse Transformation '{name}'!")
         return transformations
