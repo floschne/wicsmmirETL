@@ -4,8 +4,6 @@ from pathlib import Path
 from typing import Union
 
 import pandas as pd
-import spacy
-import nltk
 from loguru import logger
 from tqdm import tqdm
 
