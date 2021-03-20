@@ -13,3 +13,6 @@ data/v1/train_set_v1.df.feather filter=lfs diff=lfs merge=lfs -text
 data/f30k_metadata_polyglot.df.feather filter=lfs diff=lfs merge=lfs -text
 data/f30k_metadata_spacy.df.feather filter=lfs diff=lfs merge=lfs -text
 data/f30k_metadata_nltk.df.feather filter=lfs diff=lfs merge=lfs -text
+data/wicsmmir_v2_metadata_nltk.df.feather filter=lfs diff=lfs merge=lfs -text
+data/wicsmmir_v2_metadata_polyglot.df.feather filter=lfs diff=lfs merge=lfs -text
+data/wicsmmir_v2_metadata_spacy.df.feather filter=lfs diff=lfs merge=lfs -text
