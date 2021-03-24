@@ -54,6 +54,8 @@ metadata = pd.read_feather("path/to/metadata.feather", use_threads=True)
 | fk_re_score		| Flesch-Kincaid Reading Ease score of the Caption ***						| int		|
 | fk_gl_score		| Flesch-Kincaid Grade Level score of the Caption ***						| int		|
 | dc_score			| Dale-Chall score of the Caption ***										| int		|
+| ne_texts			| Surface form of detected NamedEntities									| List[str]	|
+| ne_types			| Types of the detected NamedEntities (PER, LOC, GPE, etc.)					| List[str]	|
 
 ** This column is only available if `config.input_data.pos_tag_stats == True`
 . [Click here](https://universaldependencies.org/docs/u/pos/) for a detailed description of the POS Tags
