@@ -1,8 +1,8 @@
 import hashlib
 import re
-import regex
 import time
 import urllib.parse
+from collections import Counter
 from enum import Enum, unique
 from pathlib import Path
 from typing import Union, Tuple, List
@@ -11,6 +11,7 @@ from urllib.error import HTTPError, URLError
 import nltk
 import numpy as np
 import pandas as pd
+import regex
 import requests
 import spacy
 from PIL import Image, UnidentifiedImageError
@@ -135,6 +136,41 @@ def apply_img_transformations(wikicaps_id: int,
     except Exception:
         logger.exception(f"Error while applying Image Transformations to {img_path}!")
         return wikicaps_id, False
+
+
+def generate_corpus_vocab(dataframe: pd.DataFrame,
+                          n_spacy_workers: int = 6,
+                          spacy_model: str = "en_core_web_lg",
+                          backend: MetadataGeneratorBackend = MetadataGeneratorBackend.SPACY) -> pd.DataFrame:
+    # TODO support NLTK and Polyglot backends
+    if backend != MetadataGeneratorBackend.SPACY:
+        raise NotImplementedError("Currently only spaCy backend is supported!")
+
+    logger.info(f"Generating corpus vocabulary using {backend.upper()}...")
+    start = time.time()
+    # collect ALL tokens and their POS of ALL captions
+    tok_pos_cnt = Counter()
+
+    with tqdm(total=len(dataframe)) as pbar:
+        spacy_nlp = spacy.load(spacy_model)
+        for doc in spacy_nlp.pipe(dataframe['caption'].astype(str), n_process=n_spacy_workers):
+            for tok in doc:
+                # strange syntax with double tuple to force tuple counting
+                tok_pos_cnt.update(((tok.text, tok.pos_),))
+            pbar.update(1)
+
+    # transform the counter in a DataFrame
+    vocab = pd.DataFrame.from_dict(tok_pos_cnt, orient='index').reset_index()
+    vocab = vocab.rename(columns={'index': 'tok_pos', 0: 'count'})
+    # split the tuples into own columns
+    vocab[['token', 'pos']] = pd.DataFrame(vocab['tok_pos'].tolist(), index=vocab.index)
+    # remove the original column
+    vocab = vocab.drop('tok_pos', axis=1)
+    # set multi index token -> pos -> count
+    vocab = vocab.set_index(['token', 'pos'])
+    vocab.sort_values(by=['count'], ascending=False, inplace=True)
+    logger.info(f"Finished generating corpus vocabulary in {time.time() - start} seconds!")
+    return vocab
 
 
 def generate_caption_stats(dataframe: pd.DataFrame,
