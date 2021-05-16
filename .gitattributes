@@ -16,3 +16,6 @@ data/f30k_metadata_nltk.df.feather filter=lfs diff=lfs merge=lfs -text
 data/wicsmmir_v2_metadata_nltk.df.feather filter=lfs diff=lfs merge=lfs -text
 data/wicsmmir_v2_metadata_polyglot.df.feather filter=lfs diff=lfs merge=lfs -text
 data/wicsmmir_v2_metadata_spacy.df.feather filter=lfs diff=lfs merge=lfs -text
+data/f30k_raw.df.feather filter=lfs diff=lfs merge=lfs -text
+data/v3/train_set_v3.df.feather filter=lfs diff=lfs merge=lfs -text
+data/v3/test_set_v3.df.feather filter=lfs diff=lfs merge=lfs -text
