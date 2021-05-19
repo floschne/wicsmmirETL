@@ -9,10 +9,10 @@ from tqdm import tqdm
 
 from filters import create_filters_from_config
 from transformations import create_image_transformations_from_config
-from utils import ImageOutputFormat, download_wikimedia_img, apply_img_transformations, generate_caption_stats
+from utils import ImageOutputFormat, apply_img_transformations, download_wit_img
 
 
-class WikiCapsETLPipeline(object):
+class WitETLPipeline(object):
 
     def __init__(self, config):
         self.config = config
@@ -63,7 +63,6 @@ class WikiCapsETLPipeline(object):
             self.path_caption_csv_file.parent.mkdir(parents=True, exist_ok=True)
 
         # members
-        self.raw_data: Union[pd.DataFrame, None] = None  # DF that contains raw data from CSV / TSV
         self.metadata: Union[pd.DataFrame, None] = None  # DF that contains stats
 
     def extract(self, separator: str = "\|\|\|", header=None):
@@ -71,30 +70,36 @@ class WikiCapsETLPipeline(object):
         Extraction step of the ETL Process.
         """
         start = time.time()
-        logger.info(f"Importing wikicaps data from {self.wikicaps_datasource} into memory...")
-        df = pd.read_csv(self.wikicaps_datasource,
-                         sep=separator,
-                         header=header,
-                         encoding='utf-8',
-                         engine="python")
-        df = df.rename(columns={0: 'wikicaps_id', 1: 'wikimedia_file', 2: 'caption'})
-        df.set_index('wikicaps_id', inplace=True, verify_integrity=True, drop=False)
-        self.wikicaps_data = df
-        logger.info(f"Finished importing wikicaps data in {time.time() - start} seconds!")
+        logger.info(f"Loading WITs data from {self.datasource} ...")
+        # TODO no time to generalize - only support for direct dataframes with metadata for now.
+        #  Check ipynb for impl details how to create the df and generate metadata
+        df = pd.read_feather(self.datasource)
+        if 'num_tok' in df.columns:  # TODO better checks, no hardcoding
+            # metadata already generated
+            df.set_index('wit_id', inplace=True, verify_integrity=True, drop=False)
+            self.metadata = df
+        else:
+            raise NotImplementedError(
+                "no time to generalize - only support for direct dataframes with metadata for now."
+                "Check ipynb for impl details how to create the df and generate metadata")
+
+        logger.info(f"Finished loading WIT data in {time.time() - start} seconds!")
 
         if self.shuffle_data:
-            logger.info(f"Shuffling wikicaps data with seed={self.random_seed}... ")
-            self.wikicaps_data = self.wikicaps_data.sample(frac=1, random_state=self.random_seed)
+            logger.info(f"Shuffling WIT data with seed={self.random_seed}... ")
+            self.metadata = self.metadata.sample(frac=1, random_state=self.random_seed)
 
-        logger.info("Generating Metadata...")
-        self.wikicaps_data = generate_caption_stats(self.wikicaps_data,
-                                                    self.add_pos_tag_stats,
-                                                    self.add_readability_scores,
-                                                    self.n_spacy_workers,
-                                                    self.spacy_model,
-                                                    self.metadata_generator_backend)
-        self.metadata = self.wikicaps_data.copy()
-        self._persist_metadata(full=True)
+        # logger.info("Generating Metadata...")
+        # self.wikicaps_data = generate_caption_stats(self.wikicaps_data,
+        #                                             self.add_pos_tag_stats,
+        #                                             self.add_readability_scores,
+        #                                             self.n_spacy_workers,
+        #                                             self.spacy_model,
+        #                                             self.metadata_generator_backend)
+        # self.metadata = self.wikicaps_data.copy()
+        # self._persist_metadata(full=True)
+
+        # TODO check for conf variable if we want to apply filters
         self._filter_by_caption()
 
         len_f_df = len(self.metadata)
@@ -105,11 +110,12 @@ class WikiCapsETLPipeline(object):
             logger.info(f"Pruning metadata {self.max_samples} to {self.max_samples} samples...")
             self.metadata = self.metadata.head(n=self.max_samples)
 
-        self._persist_metadata()
+        self._persist_metadata()  # TODO config!
+
+        # TODO check for conf variable if we want to download image
         self._download_images()
 
         logger.info(f"Finished Extraction Step of {len(self.metadata)} samples in {time.time() - start} seconds!")
-
 
     def _download_images(self):
         logger.info(
@@ -121,9 +127,9 @@ class WikiCapsETLPipeline(object):
                 futures = []
                 for _, row in self.metadata.iterrows():
                     # submit a download task for every row in the filtered dataframe
-                    future = executor.submit(download_wikimedia_img,
-                                             row['wikimedia_file'],
-                                             row['wikicaps_id'],
+                    future = executor.submit(download_wit_img,
+                                             row['image_url'],
+                                             row['wit_id'],
                                              self.img_output_directory,
                                              self.img_output_format,
                                              self.max_img_width,
@@ -152,22 +158,27 @@ class WikiCapsETLPipeline(object):
         logger.info(f"Finished downloading images from WikiMedia in {time.time() - start} seconds!")
 
     def get_column_names(self):
-        return list(self.wikicaps_data.columns)
+        return list(self.metadata.columns)
 
     def _filter_by_caption(self):
-        logger.info(
-            f"Filtering WikiCaps data of {len(self.wikicaps_data)} rows by {len(self.caption_filters)} caption filters!")
+        len_before = len(self.metadata)
+        logger.info(f"Filtering WIT data with {len_before} rows by {len(self.caption_filters)} caption filters!")
         start = time.time()
         for f in self.caption_filters:
-            assert f.cId in self.get_column_names(), \
-                f"Cannot apply filter {f.name} because there is no column '{f.cId}' in the dataframe!"
-            self.metadata = self.metadata.where(f).dropna()
+            try:
+                assert f.cId in self.get_column_names(), \
+                    f"Cannot apply filter {f.name} because there is no column '{f.cId}' in the dataframe!"
+                self.metadata = self.metadata.where(f).dropna()
+            except Exception as e:
+                logger.error(f"Cannot pally filter {f.name}: {e}")
+                raise SystemError(f"Cannot pally filter {f.name}: {e}")
+
         len_filtered_df = len(self.metadata)
         # cast unnecessary floats back to ints (they're converted to floats after filtering for what ever reason)
         self.metadata = self.metadata.convert_dtypes()
         logger.info(
-            f"Removed {len(self.wikicaps_data) - len_filtered_df} rows. Filtered data contains {len_filtered_df} rows.")
-        logger.info(f"Finished filtering wikicaps data based on captions in {time.time() - start} seconds!")
+            f"Removed {len_before - len_filtered_df} rows. Filtered data contains {len_filtered_df} rows.")
+        logger.info(f"Finished filtering WIT data based on captions in {time.time() - start} seconds!")
 
     def _import_metadata(self, path):
         logger.info(f"Importing Metadata from {path}...")
@@ -194,7 +205,7 @@ class WikiCapsETLPipeline(object):
                 for _, row in self.metadata.iterrows():
                     # submit a transformation task for every image
                     future = executor.submit(apply_img_transformations,
-                                             row['wikicaps_id'],
+                                             row['wit_id'],
                                              row['image_path'],
                                              self.image_transformations)
                     future.add_done_callback(lambda p: progress.update())
@@ -213,11 +224,11 @@ class WikiCapsETLPipeline(object):
 
     def _persist_metadata(self, full=False):
         if full:
-            dst_p = self.metadata_output_file.parent.joinpath(self.metadata_output_file.stem +
-                                                              '_full' +
-                                                              "".join(self.metadata_output_file.suffixes))
+            dst_p = self.metadata_file.parent.joinpath(self.metadata_file.stem +
+                                                       '_full' +
+                                                       "".join(self.metadata_file.suffixes))
         else:
-            dst_p = self.metadata_output_file
+            dst_p = self.metadata_file
         logger.info(f"Persisting metadata at {str(dst_p)}")
         start = time.time()
         self.metadata.reset_index(drop=True).to_feather(dst_p)

@@ -16,7 +16,6 @@ import requests
 import spacy
 from PIL import Image, UnidentifiedImageError
 from loguru import logger
-# from pandarallel import pandarallel
 from polyglot.downloader import downloader
 from polyglot.text import Text
 from readability import Readability
@@ -61,8 +60,19 @@ def build_wikimedia_url(wikimedia_file_id: str, width: int, direct: bool = True)
     return f"https://commons.wikimedia.org/w/index.php?title=Special:FilePath&file={quoted}&width={width}"
 
 
-def persist_img(img, dst: Path, wikicaps_id: int, img_out_format: ImageOutputFormat) -> Tuple[int, str]:
-    logger.debug(f"Persisting image with WikiCaps ID {wikicaps_id} at {str(dst)}...")
+def build_wit_url(img_url: str, width: int) -> str:
+    # in: https or http ://upload.wikimedia.org/wikipedia/commons/7/7e/DecoyGreyFrancolin.jpg
+    # out: https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/DecoyGreyFrancolin.jpg/500px-DecoyGreyFrancolin.jpg
+    is_https = 'https://' in img_url[:8]
+
+    image_name = img_url[img_url.rindex('/') + 1:]
+    prefix = f"http{'s' if is_https else ''}://upload.wikimedia.org/wikipedia/commons/"
+    hashes = img_url.replace(prefix, '').replace(image_name, '')
+    return f"https://upload.wikimedia.org/wikipedia/commons/thumb/{hashes}{image_name}/{width}px-{image_name}"
+
+
+def persist_img(img, dst: Path, img_id: int, img_out_format: ImageOutputFormat) -> Tuple[int, str]:
+    logger.debug(f"Persisting image with ID {img_id} at {str(dst)}...")
     if img_out_format == ImageOutputFormat.NPY:
         np.save(str(dst), img)
     elif img_out_format == ImageOutputFormat.NPZ:
@@ -70,7 +80,7 @@ def persist_img(img, dst: Path, wikicaps_id: int, img_out_format: ImageOutputFor
     elif img_out_format == ImageOutputFormat.PNG or img_out_format == ImageOutputFormat.JPG:
         io.imsave(str(dst), img)
 
-    return wikicaps_id, str(dst)
+    return img_id, str(dst)
 
 
 def download_wikimedia_img(wikimedia_file_id: str,
@@ -124,7 +134,63 @@ def download_wikimedia_img(wikimedia_file_id: str,
         return persist_img(img, dst, wikicaps_id, img_out_format)
 
 
-def apply_img_transformations(wikicaps_id: int,
+def download_wit_img(img_url: str,
+                     wit_id: int,
+                     dst_path: Path,
+                     img_out_format: ImageOutputFormat,
+                     width: int = 500,
+                     download_with_skimage=False) -> Tuple[int, Union[str, None]]:
+    assert dst_path.is_dir(), "Destination path is not a directory!"
+    dst = dst_path.joinpath(f"wit_{wit_id}.{img_out_format}")
+    if dst.exists():
+        logger.warning(f"File {str(dst)} already exists!")
+        return wit_id, str(dst)
+
+    anti_rate_limit_waiting_time = np.random.uniform(0.01, 0.25)
+    img_url = build_wit_url(img_url, width=width)
+    logger.debug(f"Downloading image with WIT ID {wit_id} from {img_url}...")
+
+    try:
+
+        time.sleep(anti_rate_limit_waiting_time)
+
+        if download_with_skimage:
+            img = io.imread(img_url)
+        else:
+            resp = requests.get(img_url, stream=True, allow_redirects=True, timeout=.5)
+            if resp.status_code == 200:
+                img = np.asarray(Image.open(resp.raw))
+            else:
+                raise ConnectionError()
+    except (HTTPError, TimeoutError, URLError, ConnectionError, UnidentifiedImageError, Exception) as e:
+        logger.warning(f"Error while trying to download '{wit_id}' from URL at {img_url} with "
+                       f"{'skimage' if download_with_skimage else 'requests'}")
+        logger.warning(f"{e}")
+        logger.warning(f"Retrying with {'requests' if download_with_skimage else 'skimage'}")
+        # try downloading with the other lib if the first try with the specified lib failed.
+        try:
+            time.sleep(anti_rate_limit_waiting_time)
+
+            if download_with_skimage:
+                resp = requests.get(img_url, stream=True, allow_redirects=True, timeout=.5)
+                if resp.status_code == 200:
+                    img = np.asarray(Image.open(resp.raw))
+                else:
+                    raise ConnectionError()
+            else:
+                img = io.imread(img_url)
+
+            return persist_img(img, dst, wit_id, img_out_format)
+
+        except (HTTPError, TimeoutError, URLError, ConnectionError, UnidentifiedImageError, Exception) as e:
+            logger.error(f"Error while trying to download '{wit_id}' from direct URL at {img_url}!")
+            logger.error(f"{e}")
+            return wit_id, None
+    else:
+        return persist_img(img, dst, wit_id, img_out_format)
+
+
+def apply_img_transformations(img_id: int,
                               img_path: str,
                               transformations: List[ImageTransformationBase]) -> Tuple[int, bool]:
     try:
@@ -132,10 +198,11 @@ def apply_img_transformations(wikicaps_id: int,
             for t in transformations:
                 logger.debug(f"Applying {t.name} Image Transformation to {img_path}...")
                 img = t(img, img_path=img_path)
-            return wikicaps_id, True
-    except Exception:
-        logger.exception(f"Error while applying Image Transformations to {img_path}!")
-        return wikicaps_id, False
+            return img_id, True
+    except Exception as e:
+        logger.error(f"Error while applying Image Transformations to {img_path}!")
+        logger.error(f"{e}")
+        return img_id, False
 
 
 def generate_corpus_vocab(dataframe: pd.DataFrame,
