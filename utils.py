@@ -87,12 +87,19 @@ def download_wikimedia_img(wikimedia_file_id: str,
 
     # try to download image from direct URL
     url = build_wikimedia_url(wikimedia_file_id, width)
+
+    # wikimedia header for user agent
+    # https://meta.wikimedia.org/wiki/User-Agent_policy
+
+    headers = {
+        'User-Agent': 'User-Agent: WICSMMIR_ETL_DOWNLOAD_BOT/0.1 (https://github.com/floschne/wicsmmirETL; floschne@github.com) wicsmmir-etl/0.1'
+    }
     try:
         logger.debug(f"Downloading image with WikiCaps ID {wikicaps_id} from {url}...")
         if download_with_skimage:
             img = io.imread(url)
         else:
-            resp = requests.get(url, stream=True, allow_redirects=True, timeout=.5)
+            resp = requests.get(url, stream=True, allow_redirects=True, timeout=.5, headers=headers)
             if resp.status_code == 200:
                 img = np.asarray(Image.open(resp.raw))
             else:
@@ -107,13 +114,13 @@ def download_wikimedia_img(wikimedia_file_id: str,
             if download_with_skimage:
                 img = io.imread(url)
             else:
-                resp = requests.get(url, stream=True, allow_redirects=True, timeout=.5)
+                resp = requests.get(url, stream=True, allow_redirects=True, timeout=.5, headers=headers)
                 if resp.status_code == 200:
                     img = np.asarray(Image.open(resp.raw))
                 else:
                     raise ConnectionError()
         except (HTTPError, TimeoutError, URLError, UnidentifiedImageError, ConnectionError, Exception) as e:
-            logger.error(f"Error while trying to download '{wikimedia_file_id}' from WikiMedia!\n{e}")
+            logger.error(f"Error while trying to download '{wikimedia_file_id}' from WikiMedia from {url}!\n{e}")
             return wikicaps_id, None
         else:
             return persist_img(img, dst, wikicaps_id, img_out_format)
