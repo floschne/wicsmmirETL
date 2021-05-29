@@ -104,30 +104,38 @@ class WikiCapsETLPipeline(object):
         Extraction step of the ETL Process.
         """
         start = time.time()
-        logger.info(f"Importing wikicaps data from {self.wikicaps_datasource} into memory...")
-        df = pd.read_csv(self.wikicaps_datasource,
-                         sep=separator,
-                         header=header,
-                         encoding='utf-8',
-                         engine="python")
-        df = df.rename(columns={0: 'wikicaps_id', 1: 'wikimedia_file', 2: 'caption'})
-        df.set_index('wikicaps_id', inplace=True, verify_integrity=True, drop=False)
-        self.wikicaps_data = df
-        logger.info(f"Finished importing wikicaps data in {time.time() - start} seconds!")
+        if not self._metadata_exists(full=True):
+            logger.info(f"Importing wikicaps data from {self.wikicaps_datasource} into memory...")
+            # load the csv
+            df = pd.read_csv(self.wikicaps_datasource,
+                             sep=separator,
+                             header=header,
+                             encoding='utf-8',
+                             engine="python")
+            df = df.rename(columns={0: 'wikicaps_id', 1: 'wikimedia_file', 2: 'caption'})
+            df.set_index('wikicaps_id', inplace=True, verify_integrity=True, drop=False)
+            self.wikicaps_data = df
+            logger.info(f"Finished importing wikicaps data in {time.time() - start} seconds!")
 
-        if self.shuffle_data:
-            logger.info(f"Shuffling wikicaps data with seed={self.random_seed}... ")
-            self.wikicaps_data = self.wikicaps_data.sample(frac=1, random_state=self.random_seed)
+            if self.shuffle_data:
+                logger.info(f"Shuffling wikicaps data with seed={self.random_seed}... ")
+                self.wikicaps_data = self.wikicaps_data.sample(frac=1, random_state=self.random_seed)
 
-        logger.info("Generating Metadata...")
-        self.wikicaps_data = generate_caption_stats(self.wikicaps_data,
-                                                    self.add_pos_tag_stats,
-                                                    self.add_readability_scores,
-                                                    self.n_spacy_workers,
-                                                    self.spacy_model,
-                                                    self.metadata_generator_backend)
-        self.metadata = self.wikicaps_data.copy()
-        self._persist_metadata(full=True)
+            logger.info("Generating Metadata...")
+            self.wikicaps_data = generate_caption_stats(self.wikicaps_data,
+                                                        self.add_pos_tag_stats,
+                                                        self.add_readability_scores,
+                                                        self.n_spacy_workers,
+                                                        self.spacy_model,
+                                                        self.metadata_generator_backend)
+            self.metadata = self.wikicaps_data.copy()
+            self._persist_metadata(full=True)
+        else:
+            metadata_path = str(self._get_metadata_path(full=True))
+            logger.info(f"Metadata already exists at {metadata_path}! Loading...")
+            self.metadata = pd.read_feather(path=metadata_path)
+            logger.info(f"Finished loading Metadata with {len(self.metadata)} rows in {time.time() - start} seconds!")
+
         self._filter_by_caption()
 
         len_f_df = len(self.metadata)
@@ -144,11 +152,11 @@ class WikiCapsETLPipeline(object):
         logger.info(f"Finished Extraction Step of {len(self.metadata)} samples in {time.time() - start} seconds!")
 
     def get_column_names(self):
-        return list(self.wikicaps_data.columns)
+        return list(self.metadata.columns)
 
     def _filter_by_caption(self):
         logger.info(
-            f"Filtering WikiCaps data of {len(self.wikicaps_data)} rows by {len(self.caption_filters)} caption filters!")
+            f"Filtering WikiCaps data of {len(self.metadata)} rows by {len(self.caption_filters)} caption filters!")
         start = time.time()
         for f in self.caption_filters:
             assert f.cId in self.get_column_names(), \
@@ -158,7 +166,7 @@ class WikiCapsETLPipeline(object):
         # cast unnecessary floats back to ints (they're converted to floats after filtering for what ever reason)
         self.metadata = self.metadata.convert_dtypes()
         logger.info(
-            f"Removed {len(self.wikicaps_data) - len_filtered_df} rows. Filtered data contains {len_filtered_df} rows.")
+            f"Removed {len(self.metadata) - len_filtered_df} rows. Filtered data contains {len_filtered_df} rows.")
         logger.info(f"Finished filtering wikicaps data based on captions in {time.time() - start} seconds!")
 
     def _import_metadata(self, path):
@@ -203,13 +211,20 @@ class WikiCapsETLPipeline(object):
 
         logger.info(f"Finished Transformation Step in {time.time() - start} seconds!")
 
-    def _persist_metadata(self, full=False):
+    def _get_metadata_path(self, full: bool = False):
         if full:
             dst_p = self.metadata_output_file.parent.joinpath(self.metadata_output_file.stem +
                                                               '_full' +
                                                               "".join(self.metadata_output_file.suffixes))
         else:
             dst_p = self.metadata_output_file
+        return dst_p
+
+    def _metadata_exists(self, full: bool = False) -> bool:
+        return self._get_metadata_path().exists()
+
+    def _persist_metadata(self, full: bool = False):
+        dst_p = self._get_metadata_path(full)
         logger.info(f"Persisting metadata at {str(dst_p)}")
         start = time.time()
         self.metadata.reset_index(drop=True).to_feather(dst_p)
