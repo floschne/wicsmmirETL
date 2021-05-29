@@ -97,8 +97,8 @@ def download_wikimedia_img(wikimedia_file_id: str,
                 img = np.asarray(Image.open(resp.raw))
             else:
                 raise ConnectionError()
-    except (HTTPError, TimeoutError, URLError, ConnectionError):
-        logger.warning(f"Error while trying to download '{wikimedia_file_id} from direct URL at {url}'!")
+    except (HTTPError, TimeoutError, URLError, ConnectionError) as e:
+        logger.warning(f"Error while trying to download '{wikimedia_file_id} from direct URL at {url}'!\n{e}")
 
         # retry download from indirect URL
         url = build_wikimedia_url(wikimedia_file_id, width, direct=False)
@@ -112,13 +112,13 @@ def download_wikimedia_img(wikimedia_file_id: str,
                     img = np.asarray(Image.open(resp.raw))
                 else:
                     raise ConnectionError()
-        except (HTTPError, TimeoutError, URLError, UnidentifiedImageError, ConnectionError, Exception):
-            logger.error(f"Error while trying to download '{wikimedia_file_id}' from WikiMedia!")
+        except (HTTPError, TimeoutError, URLError, UnidentifiedImageError, ConnectionError, Exception) as e:
+            logger.error(f"Error while trying to download '{wikimedia_file_id}' from WikiMedia!\n{e}")
             return wikicaps_id, None
         else:
             return persist_img(img, dst, wikicaps_id, img_out_format)
-    except (UnidentifiedImageError, Exception):
-        logger.exception(f"Error while trying to download '{wikimedia_file_id}' from WikiMedia!")
+    except (UnidentifiedImageError, Exception) as e:
+        logger.exception(f"Error while trying to download '{wikimedia_file_id}' from WikiMedia!\n{e}")
         return wikicaps_id, None
     else:
         return persist_img(img, dst, wikicaps_id, img_out_format)
